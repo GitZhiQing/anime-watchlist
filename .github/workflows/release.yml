@@ -25,6 +25,10 @@ jobs:
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
 
+      - name: Enable .NET Framework 3.5 (WiX dependency)
+        shell: powershell
+        run: Enable-WindowsOptionalFeature -Online -FeatureName NetFx3 -All -NoRestart
+
       - name: Install frontend dependencies
         run: npm ci
 
