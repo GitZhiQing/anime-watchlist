@@ -9,6 +9,7 @@ npm install              # 安装依赖
 npm run tauri dev        # 开发（Vite HMR + Tauri 窗口）
 npm run tauri build      # 生产打包（Windows nsis/msi）
 npx tsc --noEmit         # 仅类型检查
+npm run release patch    # 发版（补丁/小/大版本号 或 指定 X.Y.Z）
 ```
 
 ## 架构
@@ -50,6 +51,32 @@ docs/                   # 设计文档 + Bangumi OpenAPI 规约
 - **凭据管理**：用户自填 client_id/secret，应用不内置凭据
 - **缓存**：TanStack Query，条目详情 staleTime 30min，收藏列表 1min + mutation 失效
 - **封面**：列表用 `images.small`（`object-contain`，容器比例 `aspect-[5/7]`），弹大图用 `images.medium`
+
+## 版本发布
+
+**版本号以 `package.json` 为单一权威源**，其余文件由 `scripts/release.mjs` 自动同步：
+
+| 文件 | 字段 | 同步方式 |
+|---|---|---|
+| `package.json` | `version` | 手动修改或脚本递增 |
+| `src-tauri/Cargo.toml` | `package.version` | 脚本正则替换 |
+| `src-tauri/tauri.conf.json` | `version` | 脚本 JSON 写入 |
+
+前端 `src/pages/About.tsx` 通过 Vite `define` 在构建时注入版本号（`vite.config.ts` 读取 `package.json` 的 `version` → `import.meta.env.VITE_APP_VERSION`），无需硬编码。
+
+### 发版流程
+
+```
+npm run release <bump>  →  同步 3 处版本文件  →  git commit  →  git tag vX.Y.Z  →  git push --tags
+                                                                                       ↓
+                                                                         GitHub Actions 自动触发
+                                                                                       ↓
+                                                                    构建 NSIS/MSI → 发布 GitHub Release
+```
+
+命令：`patch`（0.1.0→0.1.1）、`minor`（0.1.0→0.2.0）、`major`（0.1.0→1.0.0）或直接指定如 `1.2.3`。版本号相同时仅打标签不提交（用于首次发版/重打标签）。
+
+CI 配置在 `.github/workflows/release.yml`，在 `windows-latest` 上构建，产物通过 `softprops/action-gh-release@v2` 自动上传。
 
 ## 注意
 
