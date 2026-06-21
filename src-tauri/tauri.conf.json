@@ -6,8 +6,8 @@
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://127.0.0.1:5173",
-    "beforeBuildCommand": "npm run build",
-    "frontendDist": "../dist"
+    "beforeBuildCommand": "npm run build && node -e \"require('fs').cpSync('../dist','./dist',{recursive:true})\"",
+    "frontendDist": "./dist"
   },
   "app": {
     "windows": [
@@ -27,8 +27,7 @@
     }
   },
   "bundle": {
-    "active": true,
-    "targets": ["nsis", "msi"],
+    "active": false,
     "publisher": "GitZhiQing",
     "copyright": "© 2026 GitZhiQing",
     "icon": [
