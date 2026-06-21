@@ -59,9 +59,16 @@ if (!bump) {
 const pkg = readJSON("package.json");
 const current = pkg.version;
 const next = incVersion(current, bump);
+const tag = `v${next}`;
 
+// same version → just tag & push (first release / re-tag)
 if (next === current) {
-  console.log(`Already at version ${current}. Nothing to do.`);
+  console.log(`\n🏷  Tagging current version ${tag} (no bump needed) …`);
+  run(`git tag ${tag}`);
+  console.log(`\n⬆️  Pushing tag …`);
+  run("git push --tags");
+  console.log(`\n✅ Tagged ${tag}`);
+  console.log(`   GitHub Actions will build and publish the release shortly.\n`);
   process.exit(0);
 }
 
@@ -86,7 +93,6 @@ writeJSON("src-tauri/tauri.conf.json", tauriConf);
 
 // 5. git operations
 console.log("\n📦 Committing …");
-const tag = `v${next}`;
 const files = [
   "package.json",
   "src-tauri/Cargo.toml",
