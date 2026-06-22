@@ -1,5 +1,4 @@
-import { useMemo, useState } from "react";
-import { Check, ChevronDown, Loader2, RefreshCw } from "lucide-react";
+import { Check, ChevronDown, Loader2 } from "lucide-react";
 import {
   Collapsible,
   CollapsibleContent,
@@ -14,97 +13,44 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { SubjectRow } from "@/components/SubjectRow";
 import { BangumiLink } from "@/components/BangumiLink";
-import { useAuthUser } from "@/hooks/useAuthUser";
-import { useUserCollectionsAll, usePatchCollection } from "@/lib/queries";
-import { useQueryClient } from "@tanstack/react-query";
+import { usePatchCollection } from "@/lib/queries";
 import {
   COLLECTION_LABELS,
   COLLECTION_ORDER,
   CollectionType,
-  SubjectType,
 } from "@/types/bgm";
 import type { UserCollection } from "@/types/bgm";
 import { cn } from "@/lib/utils";
 
-function groupByType(items: UserCollection[]): Record<number, UserCollection[]> {
-  const groups: Record<number, UserCollection[]> = {};
-  for (const it of items) {
-    (groups[it.type] ??= []).push(it);
-  }
-  return groups;
+interface WatchlistProps {
+  loading: boolean;
+  totalCount: number;
+  groups: Record<number, UserCollection[]>;
+  openMap: Record<number, boolean>;
+  setOpenMap: React.Dispatch<React.SetStateAction<Record<number, boolean>>>;
 }
 
-export function Watchlist() {
-  const { user, loading: userLoading } = useAuthUser();
-  const [openMap, setOpenMap] = useState<Record<number, boolean>>(() =>
-    // 默认全部展开
-    Object.fromEntries(COLLECTION_ORDER.map((t) => [t, true])),
-  );
-
-  const animeQ = useUserCollectionsAll(user?.username, SubjectType.Anime);
-  const bookQ = useUserCollectionsAll(user?.username, SubjectType.Book);
+/** 追番列表：按收藏夹分组的受控展示组件。数据与展开状态由 App 持有。 */
+export function Watchlist({
+  loading,
+  totalCount,
+  groups,
+  openMap,
+  setOpenMap,
+}: WatchlistProps) {
   const patchMut = usePatchCollection();
-  const qc = useQueryClient();
-
-  const loading = animeQ.isLoading || bookQ.isLoading;
-  const error = animeQ.error || bookQ.error;
-
-  const groups = useMemo(() => {
-    const items = [...(animeQ.data ?? []), ...(bookQ.data ?? [])];
-    return groupByType(items);
-  }, [animeQ.data, bookQ.data]);
-
-  const totalCount = useMemo(
-    () => Object.values(groups).reduce((a, g) => a + g.length, 0),
-    [groups],
-  );
-
-  function refresh() {
-    qc.invalidateQueries({ queryKey: ["collections"] });
-  }
 
   function handleMove(item: UserCollection, type: CollectionType) {
     if (type === item.type || patchMut.isPending) return;
     patchMut.mutate({ subjectId: item.subject_id, type });
   }
 
-  if (userLoading) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" /> 加载中…
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        请先到「配置」页完成 Bangumi 认证。
-      </p>
-    );
-  }
-
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-muted-foreground">
-          {loading
-            ? "加载中…"
-            : error
-              ? "加载失败"
-              : `共 ${totalCount} 项`}
-        </span>
-        <Button variant="ghost" size="sm" onClick={refresh} disabled={loading}>
-          <RefreshCw className={cn("size-4", loading && "animate-spin")} />
-          刷新
-        </Button>
-      </div>
+      <span className="block px-1 text-sm text-muted-foreground">
+        {loading ? "加载中…" : `共 ${totalCount} 项`}
+      </span>
 
-      {error && (
-        <p className="text-sm text-destructive">
-          {error instanceof Error ? error.message : "加载失败"}
-        </p>
-      )}
       {patchMut.error && (
         <p className="text-sm text-destructive">
           移动失败：
@@ -121,6 +67,7 @@ export function Watchlist() {
           return (
             <Collapsible
               key={type}
+              id={`collection-${type}`}
               open={open}
               onOpenChange={(o) =>
                 setOpenMap((m) => ({ ...m, [type]: o }))

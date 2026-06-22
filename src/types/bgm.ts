@@ -9,6 +9,23 @@ export enum SubjectType {
   Real = 6,
 }
 
+/** 全部条目类型（无 5），用于按类型筛选。顺序：动画优先（追番主场景）。 */
+export const SUBJECT_TYPES: SubjectType[] = [
+  SubjectType.Anime,
+  SubjectType.Book,
+  SubjectType.Music,
+  SubjectType.Game,
+  SubjectType.Real,
+];
+
+export const SUBJECT_LABELS: Record<SubjectType, string> = {
+  [SubjectType.Book]: "书籍",
+  [SubjectType.Anime]: "动画",
+  [SubjectType.Music]: "音乐",
+  [SubjectType.Game]: "游戏",
+  [SubjectType.Real]: "三次元",
+};
+
 /** 收藏夹类型 SubjectCollectionType */
 export enum CollectionType {
   Wish = 1, // 想看
