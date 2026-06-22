@@ -80,7 +80,7 @@ CI 配置在 `.github/workflows/release.yml`，在 `windows-latest` 上构建，
 
 ## 注意
 
-- **端口**：开发用 5173，本机 Windows 保留 1390-1489 等段，不能改回 1420
+- **端口**：开发用 3000（HMR 3001），host 固定 127.0.0.1。本机 Windows 保留 1390-1489 等段，不能用那些段
 - **204/空 body**：`bgmRequest` 统一用 `res.text()` 读取，空则返回 undefined，避免 JSON 解析报错
 - **SlimSubject vs Subject**：列表接口返回 SlimSubject（`short_summary`/顶层 `score`），完整 Subject 仅 `GET /v0/subjects/{id}` 有 `summary`/`rating.score`/`total_episodes`
 - **收藏默认私密**：POST/PATCH collection 必带 `private:true`
