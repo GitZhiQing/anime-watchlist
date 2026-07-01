@@ -1,6 +1,6 @@
 {
   "name": "anime-watchlist",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "追番计划 — 基于 Bangumi API 的 Windows 桌面追番软件",
