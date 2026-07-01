@@ -1,11 +1,14 @@
 // TanStack Query 查询/变更封装。
 // 复用 lib/bgm.ts 的既有函数（401 自动刷新等逻辑保持不变），仅负责缓存与失效。
 import {
+  QueryCache,
+  QueryClient,
   useQuery,
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
 import {
+  AuthExpiredError,
   getSubject,
   getAllUserCollections,
   getUserCollection,
@@ -14,6 +17,33 @@ import {
   patchCollection,
 } from "@/lib/bgm";
 import type { SearchResponse, UserCollection } from "@/types/bgm";
+
+/**
+ * 构建 QueryClient：
+ * - retry 用函数形式：AuthExpiredError（登录态已清）不重试，其余最多重试 1 次。
+ * - QueryCache.onError：认证失效时清掉所有用户相关缓存，
+ *   避免展示上一个（已失效）会话拉到的数据。
+ */
+export function buildQueryClient(): QueryClient {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: (failureCount, error) =>
+          !(error instanceof AuthExpiredError) && failureCount < 1,
+        refetchOnWindowFocus: false,
+      },
+    },
+    queryCache: new QueryCache({
+      onError: (error) => {
+        if (error instanceof AuthExpiredError) {
+          queryClient.removeQueries({ queryKey: ["collections"] });
+          queryClient.removeQueries({ queryKey: ["collection"] });
+        }
+      },
+    }),
+  });
+  return queryClient;
+}
 
 const STALE = {
   subjectDetail: 30 * 60_000, // 条目信息极稳定：30 分钟
