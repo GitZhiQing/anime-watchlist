@@ -4,6 +4,18 @@ import { LazyStore } from "@tauri-apps/plugin-store";
 
 const store = new LazyStore("config.json");
 
+/**
+ * HTTP 代理配置。
+ * - url 必填，如 http://127.0.0.1:7890 / socks5://127.0.0.1:1080
+ * - username/password 可选，用于代理的 Basic 认证
+ * 存入 store 时整体读写；该键为空（delete）即表示不启用代理。
+ */
+export interface ProxyConfig {
+  url: string;
+  username?: string;
+  password?: string;
+}
+
 export const StoreKeys = {
   clientId: "client_id",
   clientSecret: "client_secret",
@@ -12,6 +24,7 @@ export const StoreKeys = {
   expiresAt: "expires_at", // epoch ms
   user: "user", // 缓存的 BgmUser
   theme: "theme",
+  proxy: "proxy", // ProxyConfig | undefined
 } as const;
 
 export async function getStore<T>(key: string): Promise<T | undefined> {

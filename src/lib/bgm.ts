@@ -3,6 +3,7 @@
 // 统一注入 UA + Bearer token，处理 401 自动刷新。
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { StoreKeys, getStore, setStore } from "@/lib/store";
+import { getProxy } from "@/lib/proxy";
 import type {
   BgmUser,
   OAuthTokenResponse,
@@ -48,6 +49,7 @@ export async function refreshAccessToken(): Promise<void> {
   if (!clientId || !clientSecret || !refreshToken) {
     throw new BgmError(401, "缺少刷新令牌所需凭据，请重新认证");
   }
+  const proxy = await getProxy();
   const res = await tauriFetch(`${OAUTH_BASE}/oauth/access_token`, {
     method: "POST",
     headers: {
@@ -61,6 +63,7 @@ export async function refreshAccessToken(): Promise<void> {
       refresh_token: refreshToken,
       redirect_uri: REDIRECT_URI,
     }),
+    ...(proxy ? { proxy } : {}),
   });
   if (!res.ok) {
     throw new BgmError(res.status, "刷新令牌失败，请重新认证");
@@ -108,6 +111,7 @@ export async function bgmRequest<T>(
     if (token) headers["Authorization"] = `Bearer ${token}`;
   }
 
+  const proxy = await getProxy();
   const doFetch = () =>
     tauriFetch(url, {
       method,
@@ -116,6 +120,7 @@ export async function bgmRequest<T>(
         body !== undefined && method !== "GET"
           ? JSON.stringify(body)
           : undefined,
+      ...(proxy ? { proxy } : {}),
     });
 
   let res = await doFetch();

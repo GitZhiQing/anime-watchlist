@@ -10,6 +10,7 @@ import { OAUTH_BASE, REDIRECT_URI, USER_AGENT, getMe } from "@/lib/bgm";
 import { StoreKeys, getStore, setStore } from "@/lib/store";
 import type { OAuthTokenResponse } from "@/types/bgm";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import { getProxy } from "@/lib/proxy";
 
 /** 是否已完成认证（有 access_token 且未过期）。 */
 export async function isAuthenticated(): Promise<boolean> {
@@ -43,6 +44,7 @@ export async function startOAuthLogin(): Promise<void> {
   const code = await codePromise;
 
   // 4. 用 code 换 token
+  const proxy = await getProxy();
   const tokenRes = await tauriFetch(`${OAUTH_BASE}/oauth/access_token`, {
     method: "POST",
     headers: {
@@ -56,6 +58,7 @@ export async function startOAuthLogin(): Promise<void> {
       code,
       redirect_uri: REDIRECT_URI,
     }),
+    ...(proxy ? { proxy } : {}),
   });
   if (!tokenRes.ok) {
     let msg = `换取令牌失败 (${tokenRes.status})`;
