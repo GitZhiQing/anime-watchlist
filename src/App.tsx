@@ -58,7 +58,7 @@ export default function App() {
   });
   const qc = useQueryClient();
 
-  const loading = queries.some((q) => q.isLoading);
+  const loading = queries.some((q) => q.isFetching);
   const error = queries.find((q) => q.error)?.error;
 
   // 每种 subjectType 对应的收藏列表，供筛选使用
@@ -107,7 +107,9 @@ export default function App() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   function refresh() {
-    qc.invalidateQueries({ queryKey: ["collections"] });
+    // 用 refetchQueries 而非 invalidateQueries：后者受 staleTime(60s) 影响，
+    // 在新鲜期内只标记 stale 不发请求，导致点击后无可见变化。
+    qc.refetchQueries({ queryKey: ["collections"] });
   }
 
   function jumpTo(type: CollectionType) {
