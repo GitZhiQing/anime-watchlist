@@ -61,13 +61,14 @@ docs/                   # 设计文档 + Bangumi OpenAPI 规约
 | `package.json` | `version` | 手动修改或脚本递增 |
 | `src-tauri/Cargo.toml` | `package.version` | 脚本正则替换 |
 | `src-tauri/tauri.conf.json` | `version` | 脚本 JSON 写入 |
+| `src/lib/bgm.ts` | `USER_AGENT` 中的 `anime-watchlist/<version>` | 脚本正则替换 |
 
 前端 `src/pages/About.tsx` 通过 Vite `define` 在构建时注入版本号（`vite.config.ts` 读取 `package.json` 的 `version` → `import.meta.env.VITE_APP_VERSION`），无需硬编码。
 
 ### 发版流程
 
 ```
-npm run release <bump>  →  同步 3 处版本文件  →  git commit  →  git tag vX.Y.Z  →  git push --tags
+npm run release <bump>  →  同步 4 处版本文件  →  git commit  →  git tag vX.Y.Z  →  git push --tags
                                                                                        ↓
                                                                          GitHub Actions 自动触发
                                                                                        ↓

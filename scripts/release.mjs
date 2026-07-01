@@ -75,28 +75,40 @@ if (next === current) {
 console.log(`\n🚀 Releasing v${current} → v${next}\n`);
 
 // 2. update package.json
-console.log("[1/3] Updating package.json …");
+console.log("[1/4] Updating package.json …");
 pkg.version = next;
 writeJSON("package.json", pkg);
 
 // 3. update Cargo.toml
-console.log("[2/3] Updating src-tauri/Cargo.toml …");
+console.log("[2/4] Updating src-tauri/Cargo.toml …");
 let cargo = readFileSync(resolve(ROOT, "src-tauri/Cargo.toml"), "utf-8");
 cargo = cargo.replace(/^version\s*=\s*".*"$/m, `version = "${next}"`);
 writeFileSync(resolve(ROOT, "src-tauri/Cargo.toml"), cargo);
 
 // 4. update tauri.conf.json
-console.log("[3/3] Updating src-tauri/tauri.conf.json …");
+console.log("[3/4] Updating src-tauri/tauri.conf.json …");
 const tauriConf = readJSON("src-tauri/tauri.conf.json");
 tauriConf.version = next;
 writeJSON("src-tauri/tauri.conf.json", tauriConf);
 
-// 5. git operations
+// 5. update USER_AGENT in bgm.ts (e.g. "…/anime-watchlist/0.1.0 …")
+console.log("[4/4] Updating src/lib/bgm.ts USER_AGENT …");
+const bgmPath = resolve(ROOT, "src/lib/bgm.ts");
+let bgm = readFileSync(bgmPath, "utf-8");
+const uaRe = /(anime-watchlist\/)(\d+\.\d+\.\d+)/;
+if (!uaRe.test(bgm)) {
+  throw new Error(`Could not find USER_AGENT version pattern in ${bgmPath}`);
+}
+bgm = bgm.replace(uaRe, `$1${next}`);
+writeFileSync(bgmPath, bgm);
+
+// 6. git operations
 console.log("\n📦 Committing …");
 const files = [
   "package.json",
   "src-tauri/Cargo.toml",
   "src-tauri/tauri.conf.json",
+  "src/lib/bgm.ts",
 ];
 run(`git add ${files.join(" ")}`);
 run(`git commit -m "chore: bump version to ${tag}"`);
