@@ -14,7 +14,7 @@ import {
 import { SubjectDetail } from "@/components/SubjectDetail";
 import { cn } from "@/lib/utils";
 import type { SlimSubject } from "@/types/bgm";
-import { SubjectType } from "@/types/bgm";
+import { SubjectType, SUBJECT_LABELS, SUBJECT_BADGE_STYLES } from "@/types/bgm";
 
 interface SubjectRowProps {
   subject: SlimSubject;
@@ -110,9 +110,14 @@ export function SubjectRow({
                 <span className="line-clamp-1 font-medium" title={title}>
                   {title}
                 </span>
-                {subject.type === SubjectType.Book && (
-                  <span className="shrink-0 rounded bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground">
-                    书籍
+                {SUBJECT_LABELS[subject.type as SubjectType] && (
+                  <span
+                    className={cn(
+                      "shrink-0 rounded px-1 py-0.5 text-[10px] leading-none",
+                      SUBJECT_BADGE_STYLES[subject.type as SubjectType],
+                    )}
+                  >
+                    {SUBJECT_LABELS[subject.type as SubjectType]}
                   </span>
                 )}
               </span>

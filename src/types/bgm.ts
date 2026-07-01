@@ -26,6 +26,18 @@ export const SUBJECT_LABELS: Record<SubjectType, string> = {
   [SubjectType.Real]: "三次元",
 };
 
+/**
+ * 条目类型徽标的配色（Tailwind 完整静态 class，避免被 purge）。
+ * 每种类型固定一个颜色，白字 + 彩底圆角胶囊，与下方灰色 tag 拉开层次。
+ */
+export const SUBJECT_BADGE_STYLES: Record<SubjectType, string> = {
+  [SubjectType.Book]: "bg-blue-500 text-white",
+  [SubjectType.Anime]: "bg-amber-500 text-white",
+  [SubjectType.Music]: "bg-purple-500 text-white",
+  [SubjectType.Game]: "bg-emerald-500 text-white",
+  [SubjectType.Real]: "bg-pink-500 text-white",
+};
+
 /** 收藏夹类型 SubjectCollectionType */
 export enum CollectionType {
   Wish = 1, // 想看
