@@ -17,7 +17,7 @@ export const API_BASE = "https://api.bgm.tv";
 export const OAUTH_BASE = "https://bgm.tv";
 export const REDIRECT_URI = "http://localhost:7359/callback";
 export const USER_AGENT =
-  "GitZhiQing/anime-watchlist/0.3.1 (https://github.com/GitZhiQing/anime-watchlist)";
+  "GitZhiQing/anime-watchlist/0.3.2 (https://github.com/GitZhiQing/anime-watchlist)";
 
 export class BgmError extends Error {
   status: number;
