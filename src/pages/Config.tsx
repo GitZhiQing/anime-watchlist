@@ -5,9 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { REDIRECT_URI } from "@/lib/bgm";
 import { startOAuthLogin } from "@/lib/auth";
-import { testProxy } from "@/lib/proxy";
+import { invalidateProxyCache, testProxy } from "@/lib/proxy";
 import {
   StoreKeys,
   clearAuth,
@@ -17,12 +16,14 @@ import {
 } from "@/lib/store";
 import type { ProxyConfig } from "@/lib/store";
 import type { BgmUser } from "@/types/bgm";
+import { useAuthUser } from "@/hooks/useAuthUser";
 import { cn } from "@/lib/utils";
 
 export function Config() {
+  // 登录态（user / needsReLogin）走 useAuthUser：会响应运行期的 auth-expired 事件。
+  const { user, needsReLogin, setUser } = useAuthUser();
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
-  const [user, setUser] = useState<BgmUser | null>(null);
   const [proxyUrl, setProxyUrl] = useState("");
   const [proxyUser, setProxyUser] = useState("");
   const [proxyPass, setProxyPass] = useState("");
@@ -35,6 +36,8 @@ export function Config() {
   const [proxyMsg, setProxyMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  /** 换 token 已完成、正在后台拉取用户资料（头像/昵称）。 */
+  const [fetchingProfile, setFetchingProfile] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   /** 用户编辑任一代理字段时：清除「已保存」闪烁态与遗留的测试/保存文案。 */
@@ -49,15 +52,13 @@ export function Config() {
 
   async function refreshState() {
     setLoading(true);
-    const [id, secret, u, proxy] = await Promise.all([
+    const [id, secret, proxy] = await Promise.all([
       getStore<string>(StoreKeys.clientId),
       getStore<string>(StoreKeys.clientSecret),
-      getStore<BgmUser>(StoreKeys.user),
       getStore<ProxyConfig>(StoreKeys.proxy),
     ]);
     setClientId(id ?? "");
     setClientSecret(secret ?? "");
-    setUser(u ?? null);
     setProxyUrl(proxy?.url ?? "");
     setProxyUser(proxy?.username ?? "");
     setProxyPass(proxy?.password ?? "");
@@ -108,19 +109,41 @@ export function Config() {
   async function handleAuth() {
     setError(null);
     setBusy(true);
+    setFetchingProfile(false);
     try {
       await saveCredentials();
-      await startOAuthLogin();
+      await startOAuthLogin({
+        // 换 token 成功即解锁按钮，/v0/me 期间显示"获取资料中"。
+        onTokenReady: () => {
+          setBusy(false);
+          setFetchingProfile(true);
+        },
+      });
+      // startOAuthLogin 已把最新 user 写入 store；同步到本地登录态。
+      const u = await getStore<BgmUser>(StoreKeys.user);
+      setUser(u ?? null); // useAuthUser 的 setter，会同时清除 needsReLogin
       await refreshState();
     } catch (e) {
+      // 如果 token 已存但拉资料失败：认证主体已成功，只是头像/昵称暂时缺失。
+      // 重启应用时 initAuth 会自动补全，不必让用户重新走 OAuth 授权。
+      const token = await getStore<string>(StoreKeys.accessToken);
+      if (token) {
+        setError(
+          "已获取授权，但拉取用户资料失败。请重启应用或切换到其他标签页后返回，资料将自动补全。",
+        );
+        await refreshState();
+        return;
+      }
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+      setFetchingProfile(false);
     }
   }
 
   async function handleLogout() {
     await clearAuth();
+    setUser(null);
     await refreshState();
   }
 
@@ -156,6 +179,7 @@ export function Config() {
     setProxyMsg(null);
     if (!proxyUrl.trim()) {
       await deleteStore(StoreKeys.proxy);
+      invalidateProxyCache();
       setSavedProxy(null);
       setProxyMsg({ type: "ok", text: "已清除代理，请求将直连" });
       flashSaved();
@@ -167,6 +191,7 @@ export function Config() {
       password: proxyPass,
     };
     await setStore(StoreKeys.proxy, cfg);
+    invalidateProxyCache();
     setSavedProxy(cfg);
     setProxyMsg({ type: "ok", text: "代理已保存，对所有请求立即生效" });
     flashSaved();
@@ -214,48 +239,57 @@ export function Config() {
         </section>
       ) : (
         <section className="space-y-4 rounded-lg border border-border p-5">
-          <p className="text-sm text-muted-foreground">
-            请先在{" "}
-            <a
-              href="https://bgm.tv/dev/app"
-              target="_blank"
-              rel="noreferrer"
-              className="underline"
-            >
-              bgm.tv 开发者后台
-            </a>{" "}
-            注册一个应用，并把回调地址设为：
-            <code className="mx-1 rounded bg-muted px-1.5 py-0.5 text-xs">
-              {REDIRECT_URI}
-            </code>
-          </p>
+          {needsReLogin ? (
+            <p className="text-sm text-destructive">
+              会话已失效，请重新认证。
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              请先在{" "}
+              <a
+                href="https://bgm.tv/dev/app"
+                target="_blank"
+                rel="noreferrer"
+                className="underline"
+              >
+                bgm.tv 开发者后台
+              </a>{" "}
+              注册一个应用，然后将 App ID 和 App Secret 填入下方。
+            </p>
+          )}
           <div className="space-y-2">
-            <Label htmlFor="client-id">Client ID</Label>
+            <Label htmlFor="client-id">App ID</Label>
             <Input
               id="client-id"
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
-              placeholder="应用的 Client ID"
+              placeholder="应用的 App ID"
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="client-secret">Client Secret</Label>
+            <Label htmlFor="client-secret">App Secret</Label>
             <Input
               id="client-secret"
               type="password"
               value={clientSecret}
               onChange={(e) => setClientSecret(e.target.value)}
-              placeholder="应用的 Client Secret"
+              placeholder="应用的 App Secret"
             />
           </div>
           <Button
             onClick={handleAuth}
-            disabled={busy || !clientId.trim() || !clientSecret.trim()}
+            disabled={
+              busy || fetchingProfile || !clientId.trim() || !clientSecret.trim()
+            }
             className="w-full"
           >
             {busy ? (
               <>
                 <Loader2 className="size-4 animate-spin" /> 等待授权…
+              </>
+            ) : fetchingProfile ? (
+              <>
+                <Loader2 className="size-4 animate-spin" /> 获取用户资料…
               </>
             ) : (
               "Bangumi 认证"

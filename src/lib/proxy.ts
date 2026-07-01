@@ -6,6 +6,17 @@ import { API_BASE, USER_AGENT } from "@/lib/bgm";
 import { StoreKeys, getStore } from "@/lib/store";
 import type { ProxyConfig } from "@/lib/store";
 
+// ---- 内存缓存 ----
+// 避免每次 bgmRequest / doRefresh / exchangeCodeForToken 都 await getStore()。
+// store 变更时（Config 保存代理），调用 invalidateProxyCache 清除缓存。
+let cachedProxy: Proxy | undefined;
+let cacheValid = false;
+
+/** 使代理缓存失效（保存新代理配置后调用）。 */
+export function invalidateProxyCache(): void {
+  cacheValid = false;
+}
+
 /**
  * 把 store 中的 ProxyConfig 转成 plugin-http 的 { all: {...} } 形式。
  * url 为空返回 undefined（不启用代理）。
@@ -24,11 +35,14 @@ function toProxy(cfg: ProxyConfig): Proxy | undefined {
 /**
  * 读取已存的代理配置并组装成 fetch 可用的 proxy 选项。
  * 未配置或 url 为空时返回 undefined。
+ * 结果会被缓存；保存新代理配置后请调用 invalidateProxyCache() 刷新。
  */
 export async function getProxy(): Promise<Proxy | undefined> {
+  if (cacheValid) return cachedProxy;
   const cfg = await getStore<ProxyConfig>(StoreKeys.proxy);
-  if (!cfg) return undefined;
-  return toProxy(cfg);
+  cachedProxy = cfg ? toProxy(cfg) : undefined;
+  cacheValid = true;
+  return cachedProxy;
 }
 
 /**
