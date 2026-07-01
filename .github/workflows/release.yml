@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
@@ -69,7 +71,7 @@ jobs:
 
           ### 使用方式
 
-          下载 zip 解压到任意目录，双击 `anime-watchlist.exe` 运行（绿色便携，无需安装）。
+          下载 zip 解压到任意目录，双击 anime-watchlist.exe 运行（绿色便携，无需安装）。
           "@
 
           gh release create $tag $zip --repo $repo --title "$tag" --notes "$notes"
