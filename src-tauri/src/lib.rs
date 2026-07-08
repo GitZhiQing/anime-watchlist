@@ -3,12 +3,27 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use tauri::State;
+use tauri::{Emitter, State};
 
-const OAUTH_PORT: u16 = 7359;
-// 监听 IPv6 loopback ::1（与 REDIRECT_URI 的 localhost 对应：现代系统 localhost
-// 多优先解析到 ::1，监听 ::1 可让浏览器首次尝试即命中，避免 IPv6→IPv4 回退延迟）。
-const OAUTH_BIND: &str = "[::1]";
+// 回调端口范围：默认从 7359 起逐个尝试到 7369，找到首个可用端口。
+// Bangumi 换 token 时校验的 redirect_uri 等于授权时用的动态值（与后台登记无关，
+// 符合 RFC 8252 loopback OAuth），故端口可动态选择，彻底规避端口被占即失败。
+// 固定端口模式（fixed_port=true）只试 7359。
+const OAUTH_PORT_START: u16 = 7359;
+const OAUTH_PORT_END: u16 = 7369;
+// 每个端口先试 IPv6 ::1（现代系统 localhost 优先解析到 ::1，首次即命中），
+// 失败再试 IPv4 127.0.0.1（兼容 localhost 解析为 IPv4-only 的环境）。
+const OAUTH_BINDS: [&str; 2] = ["[::1]", "127.0.0.1"];
+
+/// OAuth 回调结果：code（授权码）、state（CSRF 随机参数）、port（实际绑定端口）。
+/// port 回传给 JS，用于构造与之匹配的动态 redirect_uri（授权 URL 与换 token 两步
+/// 必须用同一个值，否则 redirect_uri_mismatch）。
+#[derive(serde::Serialize)]
+struct CallbackResult {
+    code: String,
+    state: Option<String>,
+    port: u16,
+}
 
 /// 正在运行的 OAuth 监听器的停止句柄。
 /// 注意：Server 与 mpsc::Sender 都由监听线程所有，这里只持有停止标志，
@@ -20,27 +35,53 @@ struct OauthServer {
 /// 全局单例监听槽：None 表示当前无监听。用 Mutex<Option<...>> 而非 OnceLock，
 /// 因为它是两个命令需协调变更的可选槽位。
 type OauthState = Mutex<Option<OauthServer>>;
-const SUCCESS_HTML: &str = r#"<!doctype html>
+fn build_success_html(code: &str) -> String {
+    // 基本 HTML 转义（OAuth code 通常为字母数字，此处置于安全）
+    let c = code
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;");
+    format!(
+        r#"<!doctype html>
 <html lang="zh-CN">
 <head><meta charset="utf-8"><title>授权成功 · 追番计划</title>
 <style>
-  *{margin:0;padding:0;box-sizing:border-box}
-  body{display:flex;align-items:center;justify-content:center;min-height:100vh;
+  *{{margin:0;padding:0;box-sizing:border-box}}
+  body{{display:flex;align-items:center;justify-content:center;min-height:100vh;
     background:#0d0d0d;color:#e5e5e5;
-    font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif}
-  .card{text-align:center;padding:48px 64px;border-radius:12px;
-    background:#1a1a1a;border:1px solid #2a2a2a}
-  .title{font-size:20px;font-weight:600;margin-bottom:8px;color:#f5f5f5}
-  .hint{font-size:14px;color:#999;line-height:1.6}
-  .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-bottom:16px}
-  .dot.ok{background:#4ade80}
-  .dot.fail{background:#f87171}
+    font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif}}
+  .card{{text-align:center;padding:40px 56px;border-radius:12px;
+    background:#1a1a1a;border:1px solid #2a2a2a;max-width:480px}}
+  .title{{font-size:20px;font-weight:600;margin-bottom:8px;color:#f5f5f5}}
+  .hint{{font-size:14px;color:#999;line-height:1.6;margin-bottom:20px}}
+  .dot{{display:inline-block;width:10px;height:10px;border-radius:50%;margin-bottom:16px}}
+  .dot.ok{{background:#4ade80}}
+  .dot.fail{{background:#f87171}}
+  .code-box{{background:#0d0d0d;border:1px solid #333;border-radius:8px;padding:14px 18px;
+    font-family:"Cascadia Code",Consolas,monospace;font-size:13px;
+    word-break:break-all;user-select:all;color:#e5e5e5;margin-bottom:16px;text-align:left}}
+  .copy-btn{{background:transparent;color:#a3a3a3;border:1px solid #333;
+    padding:6px 16px;border-radius:6px;cursor:pointer;font-size:13px;
+    font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;
+    transition:all .15s}}
+  .copy-btn:hover{{color:#e5e5e5;border-color:#525252}}
+  .copied{{display:inline-block;color:#4ade80;font-size:13px;margin-top:8px}}
 </style></head>
 <body><div class="card">
 <div class="dot ok"></div>
 <div class="title">授权成功</div>
-<p class="hint">请返回「追番计划」应用。<br>本页面可关闭。</p>
-</div></body></html>"#;
+<p class="hint">请返回「追番计划」应用继续操作，<br>也可在此页面直接复制授权码。</p>
+<div class="code-box">{c}</div>
+<button class="copy-btn" onclick="copyCode()">复制授权码</button>
+<span class="copied" id="copied-msg" style="display:none">已复制</span>
+</div>
+<script>
+function copyCode(){{navigator.clipboard.writeText("{c}").then(function(){{var m=document.getElementById('copied-msg');m.style.display='block';setTimeout(function(){{m.style.display='none'}},2000)}})}}
+</script>
+</body></html>"#
+    )
+}
 
 const FAIL_HTML: &str = r#"<!doctype html>
 <html lang="zh-CN">
@@ -64,13 +105,48 @@ const FAIL_HTML: &str = r#"<!doctype html>
 <p class="hint">未收到授权码，请返回重试。</p>
 </div></body></html>"#;
 
+/// 绑定本地回环服务器。
+/// - fixed=true：仅试 7359（先 ::1 后 127.0.0.1），皆失败返回 Err（JS 回退手动）。
+/// - fixed=false（默认）：从 7359 起逐个试到 7369，每个端口先 ::1 后 127.0.0.1，
+///   首个成功即返回 (Server, port)。全部失败返回 Err。
+/// 返回的 port 会回传 JS，用于构造与之匹配的动态 redirect_uri。
+fn bind_server(fixed: bool) -> Result<(tiny_http::Server, u16), String> {
+    let ports: Vec<u16> = if fixed {
+        vec![OAUTH_PORT_START]
+    } else {
+        (OAUTH_PORT_START..=OAUTH_PORT_END).collect()
+    };
+    for port in ports {
+        for bind in OAUTH_BINDS {
+            match tiny_http::Server::http(format!("{}:{}", bind, port)) {
+                Ok(server) => return Ok((server, port)),
+                Err(_) => continue, // 该地址+端口被占或不可用，试下一个
+            }
+        }
+    }
+    Err(format!(
+        "无可用回调端口（已尝试 {}-{}，均被占用）。请改用手动模式，或关闭占用这些端口的程序后重试。",
+        OAUTH_PORT_START,
+        if fixed { OAUTH_PORT_START } else { OAUTH_PORT_END }
+    ))
+}
+
 /// 启动一次性本地回环 HTTP 服务器，等待 Bangumi OAuth 回调，
-/// 解析出 `code` 后返回。整个调用阻塞，直到收到 code / 超时 / 被取消。
+/// 解析出 `code` 与 `state` 后返回。整个调用阻塞，直到收到 code / 超时 / 被取消。
 ///
 /// 重入安全：调用前会先停掉任何仍在运行的旧监听（置其停止标志、等待其退出），
 /// 因此重复点击「认证」不会因端口仍被占用（os error 10048）而失败。
+///
+/// fixed_port：true 时仅试固定 7359（用于用户已在后台登记 7359 的场景）；
+/// false 时动态选端口（7359–7369），根治端口被占。
 #[tauri::command]
-async fn start_oauth_server(state: State<'_, OauthState>) -> Result<String, String> {
+async fn start_oauth_server(
+    app: tauri::AppHandle,
+    state: State<'_, OauthState>,
+    fixed_port: Option<bool>,
+) -> Result<CallbackResult, String> {
+    let fixed = fixed_port.unwrap_or(false);
+
     // (1) 重入清理：停掉旧的监听线程，等其退出释放端口。
     {
         let mut guard = state.lock().map_err(|e| format!("状态锁中毒: {}", e))?;
@@ -81,9 +157,13 @@ async fn start_oauth_server(state: State<'_, OauthState>) -> Result<String, Stri
     // 旧线程 recv_timeout 最长 1s；80ms 通常足够让其观察到 flag 并退出 drop Server。
     std::thread::sleep(std::time::Duration::from_millis(80));
 
-    // (2) 绑定新 Server。
-    let server = tiny_http::Server::http(format!("{}:{}", OAUTH_BIND, OAUTH_PORT))
-        .map_err(|e| format!("无法监听 {}:{}: {}（请稍后重试）", OAUTH_BIND, OAUTH_PORT, e))?;
+    // (2) 绑定新 Server（动态端口或固定端口）。
+    let (server, port) = bind_server(fixed)?;
+
+    // 绑定成功后立即把 port 推给 JS：JS 需在打开授权页前知道 port，
+    // 以构造与之匹配的动态 redirect_uri（授权 URL 与换 token 两步须一致）。
+    // code 仍由本命令的返回值传递（收到回调后才 resolve）。
+    let _ = app.emit("oauth-port", port);
 
     // (3) 注册本次监听的停止句柄，再 spawn 线程。
     let stop = Arc::new(AtomicBool::new(false));
@@ -95,8 +175,9 @@ async fn start_oauth_server(state: State<'_, OauthState>) -> Result<String, Stri
     }
 
     // 设置一个总超时，避免永久阻塞（120s）
-    let (tx, rx) = std::sync::mpsc::channel::<Result<String, String>>();
+    let (tx, rx) = std::sync::mpsc::channel::<Result<CallbackResult, String>>();
     let stop_for_thread = stop.clone();
+    let port_for_thread = port;
     std::thread::spawn(move || {
         // 只接一次请求；若 120s 内无请求，直接返回失败。
         let timeout = std::time::Duration::from_secs(120);
@@ -127,12 +208,13 @@ async fn start_oauth_server(state: State<'_, OauthState>) -> Result<String, Stri
                         let _ = request.respond(response);
                         continue;
                     }
-                    // 解析 query 中的 code
+                    // 解析 query 中的 code 与 state
                     let code = extract_query_value(&url, "code");
-                    let html = if code.is_some() {
-                        SUCCESS_HTML
+                    let state_val = extract_query_value(&url, "state");
+                    let html = if let Some(ref c) = code {
+                        build_success_html(c)
                     } else {
-                        FAIL_HTML
+                        FAIL_HTML.to_string()
                     };
                     let response = tiny_http::Response::from_string(html)
                         .with_header(tiny_http::Header::from_bytes(
@@ -142,7 +224,16 @@ async fn start_oauth_server(state: State<'_, OauthState>) -> Result<String, Stri
                         .unwrap());
                     let _ = request.respond(response);
                     // 注意：成功发送不依赖 stop 标志，保证并发取消不丢失有效 code。
-                    let _ = tx.send(code.ok_or_else(|| "回调中未包含 code".to_string()));
+                    let result = code.ok_or_else(|| "回调中未包含 code".to_string()).and_then(
+                        |c| {
+                            Ok(CallbackResult {
+                                code: c,
+                                state: state_val,
+                                port: port_for_thread,
+                            })
+                        },
+                    );
+                    let _ = tx.send(result);
                     break;
                 }
                 Ok(None) => continue,

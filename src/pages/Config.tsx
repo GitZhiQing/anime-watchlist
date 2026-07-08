@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Loader2, LogOut } from "lucide-react";
+import { Check, Copy, Loader2, LogOut } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { startOAuthLogin } from "@/lib/auth";
+import { REDIRECT_URI } from "@/lib/bgm";
 import { invalidateProxyCache, testProxy } from "@/lib/proxy";
 import {
   StoreKeys,
@@ -15,13 +16,16 @@ import {
   setStore,
 } from "@/lib/store";
 import type { ProxyConfig } from "@/lib/store";
-import type { BgmUser } from "@/types/bgm";
 import { useAuthUser } from "@/hooks/useAuthUser";
+import { useOAuthFlow, type OAuthMode } from "@/hooks/useOAuthFlow";
 import { cn } from "@/lib/utils";
 
 export function Config() {
   // 登录态（user / needsReLogin）走 useAuthUser：会响应运行期的 auth-expired 事件。
   const { user, needsReLogin, setUser } = useAuthUser();
+  // OAuth 交互状态机：phase 驱动按钮/倒计时/取消/手动粘贴等全部 UI。
+  const { phase, start, cancel, submitManualCode, reset } = useOAuthFlow();
+
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
   const [proxyUrl, setProxyUrl] = useState("");
@@ -35,10 +39,15 @@ export function Config() {
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [proxyMsg, setProxyMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-  /** 换 token 已完成、正在后台拉取用户资料（头像/昵称）。 */
-  const [fetchingProfile, setFetchingProfile] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  // OAuth 交互选项
+  const [mode, setMode] = useState<OAuthMode>("auto");
+  /** 固定端口 7359（默认关，开启动态端口）。 */
+  const [fixedPort, setFixedPort] = useState(false);
+  /** 手动模式：用户粘贴的授权码。 */
+  const [manualCode, setManualCode] = useState("");
+  /** 复制回调地址的反馈。 */
+  const [copied, setCopied] = useState(false);
 
   /** 用户编辑任一代理字段时：清除「已保存」闪烁态与遗留的测试/保存文案。 */
   function onProxyEdit() {
@@ -52,10 +61,11 @@ export function Config() {
 
   async function refreshState() {
     setLoading(true);
-    const [id, secret, proxy] = await Promise.all([
+    const [id, secret, proxy, fixed] = await Promise.all([
       getStore<string>(StoreKeys.clientId),
       getStore<string>(StoreKeys.clientSecret),
       getStore<ProxyConfig>(StoreKeys.proxy),
+      getStore<boolean>(StoreKeys.oauthFixedPort),
     ]);
     setClientId(id ?? "");
     setClientSecret(secret ?? "");
@@ -67,6 +77,7 @@ export function Config() {
         ? { url: proxy.url, username: proxy.username, password: proxy.password }
         : null,
     );
+    setFixedPort(fixed === true);
     setLoading(false);
   }
 
@@ -101,43 +112,42 @@ export function Config() {
     refreshState();
   }, []);
 
+  // 手动模式：回调服务器收到 code 后自动填入输入框
+  useEffect(() => {
+    if (
+      phase.kind === "waiting-code" &&
+      phase.mode === "manual" &&
+      phase.receivedCode &&
+      !manualCode
+    ) {
+      setManualCode(phase.receivedCode);
+    }
+  }, [phase, manualCode]);
+
   async function saveCredentials() {
     await setStore(StoreKeys.clientId, clientId.trim());
     await setStore(StoreKeys.clientSecret, clientSecret.trim());
+    await setStore(StoreKeys.oauthFixedPort, fixedPort);
   }
 
   async function handleAuth() {
-    setError(null);
-    setBusy(true);
-    setFetchingProfile(false);
+    await saveCredentials();
+    setManualCode("");
+    await start(mode, fixedPort);
+  }
+
+  async function handleToggleFixedPort(checked: boolean) {
+    setFixedPort(checked);
+    await setStore(StoreKeys.oauthFixedPort, checked);
+  }
+
+  async function copyRedirectUri() {
     try {
-      await saveCredentials();
-      await startOAuthLogin({
-        // 换 token 成功即解锁按钮，/v0/me 期间显示"获取资料中"。
-        onTokenReady: () => {
-          setBusy(false);
-          setFetchingProfile(true);
-        },
-      });
-      // startOAuthLogin 已把最新 user 写入 store；同步到本地登录态。
-      const u = await getStore<BgmUser>(StoreKeys.user);
-      setUser(u ?? null); // useAuthUser 的 setter，会同时清除 needsReLogin
-      await refreshState();
-    } catch (e) {
-      // 如果 token 已存但拉资料失败：认证主体已成功，只是头像/昵称暂时缺失。
-      // 重启应用时 initAuth 会自动补全，不必让用户重新走 OAuth 授权。
-      const token = await getStore<string>(StoreKeys.accessToken);
-      if (token) {
-        setError(
-          "已获取授权，但拉取用户资料失败。请重启应用或切换到其他标签页后返回，资料将自动补全。",
-        );
-        await refreshState();
-        return;
-      }
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-      setFetchingProfile(false);
+      await navigator.clipboard.writeText(REDIRECT_URI);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* ignore */
     }
   }
 
@@ -205,6 +215,14 @@ export function Config() {
     );
   }
 
+  // ===== 由 phase 派生的交互态 =====
+  const phaseKind = phase.kind;
+  const inFlow =
+    phaseKind !== "idle" && phaseKind !== "success" && phaseKind !== "error" &&
+    phaseKind !== "cancelled";
+  const isManualWaiting =
+    phaseKind === "waiting-code" && phase.mode === "manual";
+
   return (
     <div className="mx-auto max-w-xl space-y-6">
       {user ? (
@@ -264,6 +282,7 @@ export function Config() {
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
               placeholder="应用的 App ID"
+              disabled={inFlow}
             />
           </div>
           <div className="space-y-2">
@@ -274,29 +293,158 @@ export function Config() {
               value={clientSecret}
               onChange={(e) => setClientSecret(e.target.value)}
               placeholder="应用的 App Secret"
+              disabled={inFlow}
             />
           </div>
-          <Button
-            onClick={handleAuth}
-            disabled={
-              busy || fetchingProfile || !clientId.trim() || !clientSecret.trim()
-            }
-            className="w-full"
-          >
-            {busy ? (
-              <>
-                <Loader2 className="size-4 animate-spin" /> 等待授权…
-              </>
-            ) : fetchingProfile ? (
-              <>
-                <Loader2 className="size-4 animate-spin" /> 获取用户资料…
-              </>
-            ) : (
-              "Bangumi 认证"
-            )}
-          </Button>
-          {error && (
-            <p className="text-sm text-destructive">{error}</p>
+
+          {/* 模式切换 + 固定端口开关 */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="inline-flex rounded-md border border-border p-0.5">
+              <button
+                type="button"
+                disabled={inFlow}
+                onClick={() => setMode("auto")}
+                className={cn(
+                  "rounded px-3 py-1 text-sm",
+                  mode === "auto"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground",
+                )}
+              >
+                自动
+              </button>
+              <button
+                type="button"
+                disabled={inFlow}
+                onClick={() => setMode("manual")}
+                className={cn(
+                  "rounded px-3 py-1 text-sm",
+                  mode === "manual"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground",
+                )}
+              >
+                手动
+              </button>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Checkbox
+                checked={fixedPort}
+                disabled={inFlow}
+                onCheckedChange={(v) => void handleToggleFixedPort(v === true)}
+              />
+              固定端口 7359
+            </label>
+          </div>
+
+          {/* 回调地址说明 / 展示 */}
+          {fixedPort ? (
+            <div className="space-y-1.5">
+              <p className="text-xs text-muted-foreground">
+                固定端口模式需在开发者后台登记以下回调地址：
+              </p>
+              <div className="flex items-center gap-2">
+                <Input value={REDIRECT_URI} readOnly className="font-mono text-xs" />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={copyRedirectUri}
+                  title="复制回调地址"
+                >
+                  {copied ? (
+                    <Check className="size-4 text-emerald-500" />
+                  ) : (
+                    <Copy className="size-4" />
+                  )}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              回调地址由应用自动选择本地端口（7359–7369），无需在开发者后台登记。
+            </p>
+          )}
+
+          {/* 主按钮 / 状态文本，由 phase 驱动 */}
+          {phaseKind === "waiting-code" && phase.mode === "auto" ? (
+            <div className="flex items-center gap-2">
+              <Button disabled className="flex-1">
+                <Loader2 className="size-4 animate-spin" /> 等待授权… 剩余 {phase.remaining}s
+              </Button>
+              <Button variant="outline" onClick={cancel}>
+                取消
+              </Button>
+            </div>
+          ) : phaseKind === "starting-server" ? (
+            <Button disabled className="w-full">
+              <Loader2 className="size-4 animate-spin" /> 准备回调服务…
+            </Button>
+          ) : phaseKind === "exchanging" ? (
+            <Button disabled className="w-full">
+              <Loader2 className="size-4 animate-spin" /> 换取令牌中…
+            </Button>
+          ) : phaseKind === "fetching-profile" ? (
+            <Button disabled className="w-full">
+              <Loader2 className="size-4 animate-spin" /> 获取用户资料…
+            </Button>
+          ) : phaseKind === "cancelled" ? (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">已取消认证。</p>
+              <Button onClick={reset} className="w-full">
+                重新认证
+              </Button>
+            </div>
+          ) : phaseKind === "error" ? (
+            <div className="space-y-2">
+              <p className="text-sm text-destructive">{phase.message}</p>
+              {phase.tokenAlreadyStored && (
+                <p className="text-sm text-muted-foreground">
+                  已获取授权，但拉取用户资料失败。请重启应用或切换到其他标签页后返回，资料将自动补全。
+                </p>
+              )}
+              <Button onClick={reset} className="w-full">
+                重试
+              </Button>
+            </div>
+          ) : (
+            <Button
+              onClick={handleAuth}
+              disabled={!clientId.trim() || !clientSecret.trim()}
+              className="w-full"
+            >
+              Bangumi 认证
+            </Button>
+          )}
+
+          {/* 手动模式：粘贴授权码 */}
+          {isManualWaiting && (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
+                {manualCode
+                  ? "授权码已自动填入，确认无误后点击提交。"
+                  : "浏览器授权后授权码将自动填入，请稍候…"}
+              </p>
+              <div className="flex items-center gap-2">
+                <Input
+                  value={manualCode}
+                  onChange={(e) => setManualCode(e.target.value)}
+                  placeholder="粘贴授权码 code"
+                  className="font-mono text-xs"
+                />
+                <Button
+                  variant="outline"
+                  onClick={cancel}
+                >
+                  取消
+                </Button>
+                <Button
+                  onClick={() => void submitManualCode(manualCode)}
+                  disabled={!manualCode.trim()}
+                >
+                  提交
+                </Button>
+              </div>
+            </div>
           )}
         </section>
       )}
