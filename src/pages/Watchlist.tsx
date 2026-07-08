@@ -1,3 +1,5 @@
+import { useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronDown, Loader2 } from "lucide-react";
 import {
   Collapsible,
@@ -11,29 +13,29 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { PageLayout } from "@/components/layout/PageLayout";
 import { SubjectRow } from "@/components/SubjectRow";
 import { BangumiLink } from "@/components/BangumiLink";
+import { WatchlistToolbar } from "@/components/WatchlistToolbar";
 import { usePatchCollection } from "@/lib/queries";
 import {
   COLLECTION_LABELS,
   COLLECTION_ORDER,
   CollectionType,
+  SubjectType,
 } from "@/types/bgm";
 import type { UserCollection } from "@/types/bgm";
-import { cn } from "@/lib/utils";
+import { cn, smoothScrollTo } from "@/lib/utils";
+
+/* ---- 追番列表展示组件（纯展示，与 WatchlistToolbar 分开） ---- */
 
 interface WatchlistProps {
-  loading: boolean;
-  totalCount: number;
   groups: Record<number, UserCollection[]>;
   openMap: Record<number, boolean>;
   setOpenMap: React.Dispatch<React.SetStateAction<Record<number, boolean>>>;
 }
 
-/** 追番列表：按收藏夹分组的受控展示组件。数据与展开状态由 App 持有。 */
-export function Watchlist({
-  loading,
-  totalCount,
+function Watchlist({
   groups,
   openMap,
   setOpenMap,
@@ -47,10 +49,6 @@ export function Watchlist({
 
   return (
     <div className="space-y-2">
-      <span className="block px-1 text-sm text-muted-foreground">
-        {loading ? "加载中…" : `共 ${totalCount} 项`}
-      </span>
-
       {patchMut.error && (
         <p className="text-sm text-destructive">
           移动失败：
@@ -153,5 +151,93 @@ export function Watchlist({
         })}
       </div>
     </div>
+  );
+}
+
+/* ---- 追番页面（含标题栏 + 工具栏 + 追番列表） ---- */
+
+interface WatchlistPageProps {
+  loading: boolean;
+  error: Error | null;
+  totalCount: number;
+  groups: Record<number, UserCollection[]>;
+  openMap: Record<number, boolean>;
+  setOpenMap: React.Dispatch<React.SetStateAction<Record<number, boolean>>>;
+  counts: Record<number, number>;
+  subjectCounts: Record<number, number>;
+  subjectType: SubjectType | undefined;
+  onSubjectTypeChange: (t: SubjectType | undefined) => void;
+}
+
+export function WatchlistPage({
+  loading,
+  error,
+  totalCount,
+  groups,
+  openMap,
+  setOpenMap,
+  counts,
+  subjectCounts,
+  subjectType,
+  onSubjectTypeChange,
+}: WatchlistPageProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const qc = useQueryClient();
+
+  function refresh() {
+    qc.refetchQueries({ queryKey: ["collections"] });
+  }
+
+  function jumpTo(type: CollectionType) {
+    setOpenMap((m) => ({ ...m, [type]: true }));
+    const container = scrollRef.current;
+    if (!container) return;
+    setTimeout(() => {
+      const el = document.getElementById(`collection-${type}`);
+      if (!el) return;
+      smoothScrollTo(container, el.offsetTop - container.offsetTop);
+    }, 200);
+  }
+
+  function jumpToTop() {
+    scrollRef.current && smoothScrollTo(scrollRef.current, 0);
+  }
+
+  return (
+    <PageLayout
+      title={
+        <>
+          追番
+          <span className="ml-2 text-sm font-normal text-muted-foreground">
+            共 {totalCount} 部
+          </span>
+        </>
+      }
+      scrollRef={scrollRef}
+      toolbar={
+        <WatchlistToolbar
+          loading={loading}
+          totalCount={totalCount}
+          counts={counts}
+          subjectCounts={subjectCounts}
+          subjectType={subjectType}
+          onSubjectTypeChange={onSubjectTypeChange}
+          onRefresh={refresh}
+          onJumpTo={jumpTo}
+          onJumpToTop={jumpToTop}
+        />
+      }
+    >
+      {error && (
+        <p className="mb-2 text-sm text-destructive">
+          {error instanceof Error ? error.message : "加载失败"}
+        </p>
+      )}
+      <Watchlist
+        groups={groups}
+        openMap={openMap}
+        setOpenMap={setOpenMap}
+      />
+    </PageLayout>
   );
 }

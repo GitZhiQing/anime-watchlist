@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Copy, Loader2, LogOut } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { PageLayout } from "@/components/layout/PageLayout";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -224,7 +225,8 @@ export function Config() {
     phaseKind === "waiting-code" && phase.mode === "manual";
 
   return (
-    <div className="mx-auto max-w-xl space-y-6">
+    <PageLayout title="配置">
+      <div className="mx-auto max-w-xl space-y-6">
       {user ? (
         <section className="space-y-4 rounded-lg border border-border p-5">
           <div className="flex items-center gap-4">
@@ -540,6 +542,7 @@ export function Config() {
           </p>
         )}
       </section>
-    </div>
+      </div>
+    </PageLayout>
   );
 }
