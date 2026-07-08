@@ -78,6 +78,10 @@ async function doRefresh(): Promise<void> {
   if (!clientId || !clientSecret || !refreshToken) {
     throw new BgmError(401, "缺少刷新令牌所需凭据，请重新认证");
   }
+  // 刷新时传的 redirect_uri 必须与当初换 token 时一致（动态端口下尤其关键）。
+  // 老用户首次升级时该键不存在，回退固定 REDIRECT_URI（与老版本行为一致）。
+  const redirectUri =
+    (await getStore<string>(StoreKeys.redirectUri)) ?? REDIRECT_URI;
   const proxy = await getProxy();
   const res = await tauriFetch(`${OAUTH_BASE}/oauth/access_token`, {
     method: "POST",
@@ -90,7 +94,7 @@ async function doRefresh(): Promise<void> {
       client_id: clientId,
       client_secret: clientSecret,
       refresh_token: refreshToken,
-      redirect_uri: REDIRECT_URI,
+      redirect_uri: redirectUri,
     }),
     connectTimeout: 10_000,
     ...(proxy ? { proxy } : {}),
@@ -167,22 +171,32 @@ export async function bgmRequest<T>(
     });
 
   let res = await doFetch();
-  // 401 → 尝试刷新一次
+  // 401 → 尝试刷新一次再重试一次。封顶单周期：刷新后重试若仍 401，
+  // 视为令牌被服务端持续拒绝，直接清登录态引导重新认证，避免与上层
+  // query retry 叠加触发二次刷新（refresh_token 轮换下会互相作废）。
   if (res.status === 401 && auth) {
     try {
       await refreshAccessToken();
       headers["Authorization"] = `Bearer ${(await getAccessToken())!}`;
       res = await doFetch();
     } catch (e) {
-      // 仅当 Bangumi 明确拒绝令牌（400/401）才视为登录态失效：
-      // 清掉本地登录态、广播事件、抛 AuthExpiredError 让 UI 引导重新认证。
-      // 网络/超时错误则原样抛出，避免断网时误清登录态。
+      // 刷新本身抛错：
+      // - AuthExpiredError（刷新被拒）：已清登录态，直接透传。
+      // - 400/401（明确拒绝）：清登录态、广播、抛 AuthExpiredError。
+      // - 网络/超时：原样抛出，保留登录态，避免断网误踢下线。
+      if (e instanceof AuthExpiredError) throw e;
       if (isTokenDefinitivelyRejected(e)) {
         await clearAuth();
         await emit("auth-expired");
         throw new AuthExpiredError();
       }
       throw e;
+    }
+    // 刷新成功但重试仍 401：令牌确实无效，封顶——清登录态引导重登。
+    if (res.status === 401) {
+      await clearAuth();
+      await emit("auth-expired");
+      throw new AuthExpiredError("刷新后令牌仍被拒绝，请重新认证");
     }
   }
   if (!res.ok) {

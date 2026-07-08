@@ -184,3 +184,16 @@ export interface OAuthTokenResponse {
   refresh_token: string;
   user_id: number;
 }
+
+/**
+ * Rust 端 start_oauth_server 的返回结构。
+ * - code：授权码（换 token 用）。
+ * - state：CSRF 随机参数（自动模式 JS 校验；手动模式不校验）。
+ * - port：实际绑定的本地端口（动态端口模式下非 7359），用于构造与之匹配的
+ *   动态 redirect_uri——授权 URL 与换 token 两步必须用同一个值。
+ */
+export interface CallbackResult {
+  code: string;
+  state: string | null;
+  port: number;
+}

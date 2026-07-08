@@ -1,9 +1,12 @@
-// OAuth 授权流程编排：
+// OAuth 授权流程编排（可组合原语）：
 // 1. 读取已存的 client_id/secret
-// 2. 启动 Rust 端本地回环服务器（阻塞等待 code）
-// 3. 打开浏览器到 Bangumi 授权页
-// 4. 拿到 code 后换 access/refresh token 并存 Store
+// 2. 启动 Rust 端本地回环服务器（动态端口，阻塞等待 code+state）
+// 3. 打开浏览器到 Bangumi 授权页（带动态 redirect_uri 与 state）
+// 4. 拿到 code 后换 access/refresh token 并存 Store（同时持久化 redirect_uri 供刷新用）
 // 5. 获取用户资料存 Store
+//
+// 注意：这里不再有单体阻塞的 startOAuthLogin——交互编排交给 useOAuthFlow 状态机，
+// 它能在等待 code 期间提供倒计时与取消（调用 stop_oauth_server）。
 import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -17,7 +20,7 @@ import {
   refreshAccessToken,
 } from "@/lib/bgm";
 import { StoreKeys, clearAuth, getStore, setStore } from "@/lib/store";
-import type { BgmUser, OAuthTokenResponse } from "@/types/bgm";
+import type { BgmUser, CallbackResult, OAuthTokenResponse } from "@/types/bgm";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import type { Proxy } from "@tauri-apps/plugin-http";
 import { getProxy } from "@/lib/proxy";
@@ -87,11 +90,15 @@ class DefinitiveTokenError extends Error {
  * - 仅对 5xx / 网络层错误（fetch reject 或 status>=500）重试，最多 3 次（首次 + 2 次重试），退避 500ms / 1s。
  * - 4xx（凭据无效 / redirect_uri 不匹配等）视为真实失败，抛 DefinitiveTokenError 不重试。
  * - connectTimeout 限制单次连接挂起时间，避免网络/代理慢时长时阻塞。
+ *
+ * 关键：redirectUri 必须等于授权时用的动态值（动态端口下为
+ * http://localhost:{P}/callback），否则 Bangumi 会以 redirect_uri_mismatch 拒绝。
  */
 async function exchangeCodeForToken(
   code: string,
   clientId: string,
   clientSecret: string,
+  redirectUri: string,
   proxy: Proxy | undefined,
 ): Promise<OAuthTokenResponse> {
   const body = new URLSearchParams({
@@ -99,7 +106,7 @@ async function exchangeCodeForToken(
     client_id: clientId,
     client_secret: clientSecret,
     code,
-    redirect_uri: REDIRECT_URI,
+    redirect_uri: redirectUri,
   });
 
   const delays = [500, 1000];
@@ -148,61 +155,96 @@ async function exchangeCodeForToken(
   );
 }
 
-export interface StartOAuthOpts {
-  /**
-   * 换 token 成功后立即触发（此时 user 资料尚未拉取）。
-   * 调用方可据此提前解除"等待授权"转圈，不必等 /v0/me 完成。
-   * 拉资料失败不致命——token 已有效，下次启动 initAuth 会自动重试补全。
-   */
-  onTokenReady?: () => void;
+/**
+ * 落库 token 三键 + 持久化本次 redirect_uri。
+ * redirect_uri 供后续 doRefresh 读取——刷新时传的 redirect_uri 必须与换 token 时一致。
+ */
+async function storeTokens(
+  token: OAuthTokenResponse,
+  redirectUri: string,
+): Promise<void> {
+  await setStore(StoreKeys.accessToken, token.access_token);
+  await setStore(StoreKeys.refreshToken, token.refresh_token);
+  await setStore(StoreKeys.expiresAt, Date.now() + token.expires_in * 1000);
+  await setStore(StoreKeys.redirectUri, redirectUri);
+}
+
+/** 拉取用户资料并落库，广播 auth-login 让 useAuthUser 同步。 */
+async function fetchAndStoreUser(): Promise<BgmUser> {
+  const user = await getMe();
+  await setStore(StoreKeys.user, user);
+  await emit("auth-login");
+  return user;
+}
+
+/** 生成 16 字节随机 hex，作为 OAuth state（CSRF 防护）。 */
+export function generateState(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** 用端口构造动态 redirect_uri（http://localhost:{port}/callback）。 */
+export function buildRedirectUri(port: number): string {
+  return `http://localhost:${port}/callback`;
+}
+
+/** 组装 Bangumi 授权页 URL（client_id / response_type=code / redirect_uri / state）。 */
+export function buildAuthorizeUrl(
+  clientId: string,
+  redirectUri: string,
+  state: string,
+): string {
+  const authUrl = new URL(`${OAUTH_BASE}/oauth/authorize`);
+  authUrl.searchParams.set("client_id", clientId);
+  authUrl.searchParams.set("response_type", "code");
+  authUrl.searchParams.set("redirect_uri", redirectUri);
+  authUrl.searchParams.set("state", state);
+  return authUrl.toString();
 }
 
 /**
- * 发起完整 OAuth 授权码流程。
- * 换 token 成功即触发 onTokenReady；随后拉取 /v0/me 写入 user，再 resolve。
+ * 启动 Rust 端本地回环服务器并等待回调。
+ * fixedPort=true 仅试固定 7359；false 动态选端口（7359–7369）。
+ * 返回 {code, state, port}；端口被占满 / 超时 / 取消时 reject。
  */
-export async function startOAuthLogin(opts: StartOAuthOpts = {}): Promise<void> {
-  const clientId = await getStore<string>(StoreKeys.clientId);
-  const clientSecret = await getStore<string>(StoreKeys.clientSecret);
-  if (!clientId || !clientSecret) {
-    throw new Error("请先填写 client_id 和 client_secret");
-  }
-
-  // 先清掉上次崩溃/残留的监听，避免端口仍被占用。
-  await invoke("stop_oauth_server").catch(() => {});
-
-  // 用 try/finally 保证监听在任何退出路径（成功/失败/取消）都及时释放，
-  // 不必等到 120s 超时（成功时 stop 已是 no-op）。
-  const codePromise = invoke<string>("start_oauth_server");
-  try {
-    // 打开浏览器授权页（在监听就绪后再开，避免回调先到）
-    const authUrl = new URL(`${OAUTH_BASE}/oauth/authorize`);
-    authUrl.searchParams.set("client_id", clientId);
-    authUrl.searchParams.set("response_type", "code");
-    authUrl.searchParams.set("redirect_uri", REDIRECT_URI);
-    await openUrl(authUrl.toString());
-
-    // 等待回调 code（超时/取消会 reject，finally 仍执行）
-    const code = await codePromise;
-
-    // 用 code 换 token（带重试 + 超时）——认证主体完成
-    const proxy = await getProxy();
-    const token = await exchangeCodeForToken(code, clientId, clientSecret, proxy);
-    await setStore(StoreKeys.accessToken, token.access_token);
-    await setStore(StoreKeys.refreshToken, token.refresh_token);
-    await setStore(StoreKeys.expiresAt, Date.now() + token.expires_in * 1000);
-
-    // token 就绪：通知调用方提前解锁 UI（按钮从"等待授权"切到"获取资料"）。
-    opts.onTokenReady?.();
-
-    // 拉取用户资料（头像/昵称/username）。
-    // 失败时抛出：token 已存，不影响认证结果；调用方应在 catch 中检查 token
-    // 是否已存在来决定错误级别（token 有效 → 友好提示；token 不存在 → 硬错误）。
-    const user = await getMe();
-    await setStore(StoreKeys.user, user);
-    // 广播登录事件，让 App.tsx 等所有 useAuthUser 实例同步读取新用户。
-    await emit("auth-login");
-  } finally {
-    await invoke("stop_oauth_server").catch(() => {});
-  }
+export function startCallbackServer(
+  fixedPort: boolean,
+): Promise<CallbackResult> {
+  return invoke<CallbackResult>("start_oauth_server", { fixedPort });
 }
+
+/** 主动停止当前 OAuth 监听（取消/卸载时调用），及时释放端口。 */
+export async function cancelCallbackServer(): Promise<void> {
+  await invoke("stop_oauth_server").catch(() => {});
+}
+
+/** 打开浏览器到授权页。 */
+export function openAuthorizeUrl(url: string): Promise<void> {
+  return openUrl(url);
+}
+
+/** 读取代理配置（供换 token 使用）。 */
+export function getOAuthProxy(): Promise<Proxy | undefined> {
+  return getProxy();
+}
+
+// 供 useOAuthFlow 复用的内部换 token 入口（不导出，避免与原 REDIRECT_URI 常量混用）。
+export async function exchangeAndStore(
+  code: string,
+  clientId: string,
+  clientSecret: string,
+  redirectUri: string,
+): Promise<void> {
+  const proxy = await getOAuthProxy();
+  const token: OAuthTokenResponse = await exchangeCodeForToken(
+    code,
+    clientId,
+    clientSecret,
+    redirectUri,
+    proxy,
+  );
+  await storeTokens(token, redirectUri);
+}
+
+export { fetchAndStoreUser, REDIRECT_URI };

@@ -25,6 +25,12 @@ export const StoreKeys = {
   user: "user", // 缓存的 BgmUser
   theme: "theme",
   proxy: "proxy", // ProxyConfig | undefined
+  // 本次换 token 用的 redirect_uri（动态端口下为 http://localhost:{P}/callback），
+  // 供 doRefresh 读取——刷新时传的 redirect_uri 必须与换 token 时一致。
+  redirectUri: "redirect_uri",
+  // 是否强制固定回调端口 7359（默认 false，开启动态端口）。用户已登记 7359 或
+  // Bangumi 收紧动态校验时启用。
+  oauthFixedPort: "oauth_fixed_port",
 } as const;
 
 export async function getStore<T>(key: string): Promise<T | undefined> {
@@ -47,4 +53,5 @@ export async function clearAuth(): Promise<void> {
   await deleteStore(StoreKeys.refreshToken);
   await deleteStore(StoreKeys.expiresAt);
   await deleteStore(StoreKeys.user);
+  await deleteStore(StoreKeys.redirectUri);
 }

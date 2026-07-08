@@ -1,57 +1,78 @@
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { initAuth } from "@/lib/auth";
 import { StoreKeys, getStore } from "@/lib/store";
 import type { BgmUser } from "@/types/bgm";
 
 /**
- * 登录用户与认证状态。
- * - 挂载时调用 initAuth：必要时主动刷新令牌、校正缓存登录态。
- * - 监听 "auth-expired" 事件：运行期刷新被服务端拒绝时，bgm.ts 广播该事件，
- *   此处把状态置为未登录 + needsReLogin，驱动 UI 引导重新认证。
- * - 监听 "auth-login" 事件：登录成功或启动刷新完成后，同步读取 store 中的
- *   最新用户资料，保证所有组件实例共享同一登录态。
+ * 登录用户与认证状态 —— 模块单例实现。
+ *
+ * 为什么用单例：App.tsx / Config.tsx / Collection.tsx / CollectAction.tsx 都调用
+ * useAuthUser()，旧实现每个实例各自 initAuth() + 各自注册监听器，导致启动时
+ * 双重刷新、双重监听。改为模块级共享一份 state：initAuth 只跑一次，监听器只注册
+ * 一次，所有组件经 useSyncExternalStore 订阅同一快照。
+ *
+ * loading 兜底：initAuth 的 Promise 包了 .catch，任何未预期抛错都置
+ * loading=false/user=null，避免应用永久卡在「加载中…」。
  */
+interface AuthState {
+  user: BgmUser | null;
+  needsReLogin: boolean;
+  loading: boolean;
+}
+
+let state: AuthState = { user: null, needsReLogin: false, loading: true };
+let initStarted = false;
+const listeners = new Set<() => void>();
+
+function setState(next: Partial<AuthState>): void {
+  state = { ...state, ...next };
+  listeners.forEach((l) => l());
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+function getSnapshot(): AuthState {
+  return state;
+}
+
+/** 启动初始化 + 注册事件监听，整个应用生命周期只执行一次。 */
+function ensureInit(): void {
+  if (initStarted) return;
+  initStarted = true;
+
+  initAuth()
+    .then((r) =>
+      setState({ user: r.user, needsReLogin: r.needsReLogin, loading: false }),
+    )
+    .catch((e) => {
+      // 兜底：initAuth 抛错也不卡 UI，按未登录处理。
+      console.error("initAuth 失败：", e);
+      setState({ user: null, needsReLogin: false, loading: false });
+    });
+
+  // 运行期令牌失效（bgm.ts 在 401 刷新被拒时 emit）
+  void listen("auth-expired", () => {
+    setState({ user: null, needsReLogin: true });
+  });
+
+  // 登录成功 / initAuth 刷新完成时，同步 store 中的用户到所有实例
+  void listen("auth-login", async () => {
+    const u = await getStore<BgmUser>(StoreKeys.user);
+    setState({ user: u ?? null, needsReLogin: false });
+  });
+}
+
+/** 写入用户并清除「会话失效」标记（登录成功或主动注销时调用）。 */
+export function setAuthUser(u: BgmUser | null): void {
+  setState({ user: u, needsReLogin: false });
+}
+
 export function useAuthUser() {
-  const [user, setUser] = useState<BgmUser | null>(null);
-  const [needsReLogin, setNeedsReLogin] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let alive = true;
-    initAuth().then((r) => {
-      if (!alive) return;
-      setUser(r.user);
-      setNeedsReLogin(r.needsReLogin);
-      setLoading(false);
-    });
-
-    // 运行期令牌失效（bgm.ts 在 401 刷新被拒时 emit）
-    const unlistenExpired = listen("auth-expired", () => {
-      setUser(null);
-      setNeedsReLogin(true);
-    });
-
-    // 登录成功 / initAuth 刷新完成时，同步 store 中的用户到所有实例
-    const unlistenLogin = listen("auth-login", async () => {
-      const u = await getStore<BgmUser>(StoreKeys.user);
-      if (!alive) return;
-      setUser(u ?? null);
-      setNeedsReLogin(false);
-    });
-
-    return () => {
-      alive = false;
-      void unlistenExpired.then((u) => u());
-      void unlistenLogin.then((u) => u());
-    };
-  }, []);
-
-  /** 写入用户并清除"会话失效"标记（登录成功或主动注销时调用）。 */
-  function markAuthenticated(u: BgmUser | null) {
-    setUser(u);
-    setNeedsReLogin(false);
-  }
-
-  return { user, loading, setUser: markAuthenticated, needsReLogin };
+  ensureInit();
+  const snap = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  return { ...snap, setUser: setAuthUser };
 }
