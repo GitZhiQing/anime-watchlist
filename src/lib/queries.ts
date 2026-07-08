@@ -15,8 +15,9 @@ import {
   searchSubjects,
   setCollection,
   patchCollection,
+  getCalendar,
 } from "@/lib/bgm";
-import type { SearchResponse, UserCollection } from "@/types/bgm";
+import type { CalendarDay, SearchResponse, UserCollection } from "@/types/bgm";
 
 /**
  * 构建 QueryClient：
@@ -49,6 +50,7 @@ const STALE = {
   subjectDetail: 30 * 60_000, // 条目信息极稳定：30 分钟
   collectionsList: 60_000, // 收藏列表：1 分钟
   collectionOne: 30_000, // 单条收藏状态：30 秒
+  calendar: 10 * 60_000, // 每日放送：10 分钟，放送计划短期不变
 } as const;
 
 /** 条目完整详情（展开时懒加载）。重复展开同一项命中缓存秒开。 */
@@ -126,5 +128,14 @@ export function usePatchCollection() {
     mutationFn: ({ subjectId, type }: { subjectId: number; type: number }) =>
       patchCollection(subjectId, type),
     onSuccess: invalidate,
+  });
+}
+
+/** 每日放送日历（公开接口，无需登录）。 */
+export function useCalendar() {
+  return useQuery<CalendarDay[]>({
+    queryKey: ["calendar"],
+    queryFn: getCalendar,
+    staleTime: STALE.calendar,
   });
 }

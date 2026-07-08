@@ -197,3 +197,39 @@ export interface CallbackResult {
   state: string | null;
   port: number;
 }
+
+// ===== 每日放送 /calendar API 类型 =====
+
+/** 日历条目（Legacy_SubjectSmall 格式）。与 SlimSubject 字段有差异，单独定义。 */
+export interface CalendarSubject {
+  id: number;
+  url: string;
+  type: number;
+  name: string;
+  name_cn: string;
+  summary: string;
+  air_date: string;
+  air_weekday: number;
+  images: SubjectImages;
+  eps: number;
+  eps_count: number;
+  /** 收藏统计（legacy /calendar API 返回，字段可能不全） */
+  collection?: Partial<CollectionStat>;
+  rating?: {
+    rank: number;
+    total: number;
+    score: number;
+    count: Record<string, number>;
+  };
+}
+
+/** 每日放送中某一天的数据 */
+export interface CalendarDay {
+  weekday: {
+    en: string;
+    cn: string;
+    ja: string;
+    id: number;
+  };
+  items: CalendarSubject[];
+}

@@ -7,6 +7,7 @@ import { StoreKeys, clearAuth, getStore, setStore } from "@/lib/store";
 import { getProxy } from "@/lib/proxy";
 import type {
   BgmUser,
+  CalendarDay,
   OAuthTokenResponse,
   PagedUserCollections,
   SearchResponse,
@@ -243,6 +244,11 @@ export function getSubject(subjectId: number): Promise<Subject> {
 
 export function getMe(): Promise<BgmUser> {
   return bgmRequest<BgmUser>("/v0/me");
+}
+
+/** 获取每日放送日历。公开接口，无需认证。 */
+export function getCalendar(): Promise<CalendarDay[]> {
+  return bgmRequest<CalendarDay[]>("/calendar", { auth: false });
 }
 
 export function getUserCollections(
