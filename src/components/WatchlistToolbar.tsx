@@ -57,7 +57,7 @@ export function WatchlistToolbar({
     <div className="ml-auto flex items-center gap-2">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm" className="gap-1">
+          <Button variant="outline" size="sm" className="gap-1">
             <Filter className="size-3.5" />
             {subjectType ? SUBJECT_LABELS[subjectType] : "全部"}
             <ChevronDown className="size-3.5" />
@@ -97,7 +97,7 @@ export function WatchlistToolbar({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
             disabled={jumpDisabled}
             className="gap-1"
@@ -124,9 +124,14 @@ export function WatchlistToolbar({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Button variant="ghost" size="sm" onClick={onRefresh} disabled={loading}>
+      <Button
+        variant="outline"
+        size="icon-sm"
+        onClick={onRefresh}
+        disabled={loading}
+        title="刷新"
+      >
         <RefreshCw className={cn("size-4", loading && "animate-spin")} />
-        刷新
       </Button>
     </div>
   );

@@ -22,6 +22,8 @@ interface SubjectRowProps {
   action?: React.ReactNode;
   /** 展开态顶部的操作区（如追番页的收藏夹调整）。 */
   expandedAction?: React.ReactNode;
+  /** 列表态额外信息行，渲染在 MetaRow 与标签之间 */
+  extraInfo?: React.ReactNode;
   className?: string;
 }
 
@@ -53,6 +55,7 @@ export function SubjectRow({
   subject,
   action,
   expandedAction,
+  extraInfo,
   className,
 }: SubjectRowProps) {
   const [open, setOpen] = useState(false);
@@ -134,6 +137,7 @@ export function SubjectRow({
               </p>
             )}
             <MetaRow subject={subject} />
+            {extraInfo}
             {tags.length > 0 && (
               <div className="flex flex-wrap gap-1 pt-0.5">
                 {tags.map((t) => (
@@ -164,9 +168,9 @@ export function SubjectRow({
         )}
       </div>
       <CollapsibleContent>
-        <div className="border-t border-border px-2 pb-2 pl-[84px]">
+        <div className="border-t border-border px-4 pb-4 pt-2">
           {expandedAction && (
-            <div className="flex items-center border-b border-border py-2">
+            <div className="flex items-center border-b border-border pb-2">
               {expandedAction}
             </div>
           )}

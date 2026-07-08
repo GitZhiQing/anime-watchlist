@@ -49,7 +49,7 @@ export function SubjectDetail({ subjectId }: SubjectDetailProps) {
   const allTags = detail.tags ?? [];
 
   return (
-    <div className="space-y-3 py-2 text-foreground">
+    <div className="space-y-1.5 py-2 text-foreground">
       <div className="space-y-1.5">
         <Field label="原名" value={detail.name} />
         <Field label="中文名" value={detail.name_cn} />
@@ -78,15 +78,6 @@ export function SubjectDetail({ subjectId }: SubjectDetailProps) {
         <Field label="平台" value={detail.platform} />
       </div>
 
-      {detail.summary && (
-        <div className="space-y-1">
-          <div className="text-xs text-muted-foreground">简介</div>
-          <p className="whitespace-pre-line text-xs leading-relaxed">
-            {detail.summary}
-          </p>
-        </div>
-      )}
-
       {allTags.length > 0 && (
         <div className="space-y-1">
           <div className="text-xs text-muted-foreground">
@@ -102,6 +93,15 @@ export function SubjectDetail({ subjectId }: SubjectDetailProps) {
               </span>
             ))}
           </div>
+        </div>
+      )}
+
+      {detail.summary && (
+        <div className="space-y-1">
+          <div className="text-xs text-muted-foreground">简介</div>
+          <p className="whitespace-pre-line text-xs leading-relaxed">
+            {detail.summary}
+          </p>
         </div>
       )}
     </div>
