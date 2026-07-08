@@ -4,7 +4,6 @@ import { Separator } from "@/components/ui/separator";
 
 const LINKS = [
   { label: "Bangumi 官网", href: "https://bgm.tv" },
-  { label: "API 文档", href: "https://bangumi.github.io/api" },
   { label: "项目仓库", href: "https://github.com/GitZhiQing/anime-watchlist" },
 ];
 
@@ -22,8 +21,8 @@ export function About() {
                 v{import.meta.env.VITE_APP_VERSION}
               </span>
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              基于 Bangumi API 的桌面追番应用，管理你的漫画与动画收藏。
+            <p className="mt-1 text-sm text-foreground/75">
+              基于 Bangumi API 的追番记录桌面应用。
             </p>
           </div>
         </div>
@@ -31,7 +30,7 @@ export function About() {
         <Separator />
 
         {/* 说明 */}
-        <div className="space-y-3 text-sm leading-relaxed text-muted-foreground">
+        <div className="space-y-3 text-sm leading-relaxed text-foreground/75">
           <p>
             本应用展示的全部内容（条目信息、封面、简介、评分等）均来自{" "}
             <a
@@ -46,7 +45,7 @@ export function About() {
             账户中，本地仅保存 OAuth 凭据与界面偏好。
           </p>
           <p>
-            本应用为第三方开源项目，与 Bangumi 无官方隶属关系。技术栈：Tauri · React · shadcn/ui。
+            本应用为第三方开源项目，与 Bangumi 无官方隶属关系。
           </p>
         </div>
 
@@ -63,7 +62,7 @@ export function About() {
                 href={l.href}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                className="inline-flex items-center gap-1 text-sm text-foreground/75 underline-offset-4 hover:text-foreground hover:underline"
               >
                 {l.label}
                 <ExternalLink className="size-3" />
