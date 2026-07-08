@@ -16,12 +16,25 @@
 <p align="center">
   <table>
     <tr>
-      <td><img src="images/demo-1.png" alt="追番页" /></td>
-      <td><img src="images/demo-2.png" alt="收藏页" /></td>
+      <td><img src="images/追番.png" alt="追番" /></td>
+      <td><img src="images/收藏.png" alt="收藏" /></td>
     </tr>
     <tr>
-      <td align="center"><sub>追番页</sub></td>
-      <td align="center"><sub>收藏页</sub></td>
+      <td align="center"><sub>追番</sub></td>
+      <td align="center"><sub>收藏</sub></td>
+    </tr>
+  </table>
+</p>
+
+<p align="center">
+  <table>
+    <tr>
+      <td><img src="images/新番-表格.png" alt="新番-表格" /></td>
+      <td><img src="images/新番-列表.png" alt="新番-列表" /></td>
+    </tr>
+    <tr>
+      <td align="center"><sub>新番-表格</sub></td>
+      <td align="center"><sub>新番-列表</sub></td>
     </tr>
   </table>
 </p>
