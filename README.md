@@ -45,6 +45,8 @@ npm run tauri dev    # 开发模式
 npm run tauri build  # 打包 Windows 安装包
 ```
 
+待办：增加「新番」页面，通过 `GET /calendar 每日放送` API 获取数据并显示，支持在此页面收藏新番。
+
 ## 说明
 
 所有收藏默认**私密**，目前不支持更改。
