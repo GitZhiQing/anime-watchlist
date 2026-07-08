@@ -39,7 +39,7 @@ src/
   pages/               # Watchlist / Collection / Config / About
   types/bgm.ts          # Bangumi 数据类型（SlimSubject/Subject/UserCollection/枚举）
 src-tauri/
-  src/lib.rs            # 插件注册 + OAuth 本地回环服务器（tiny_http:7359）
+  src/lib.rs            # 插件注册 + OAuth 本地回环服务器（tiny_http，动态端口 7359–7369）
   src/main.rs
   capabilities/default.json  # 权限（窗口/store/http/opener）
   tauri.conf.json       # 无边框窗口、Vite dev URL
@@ -51,7 +51,7 @@ docs/                   # 设计文档 + Bangumi OpenAPI 规约
 - **数据不落库**：收藏列表实时调 API，仅 token/凭据/偏好存本地（Store 插件）
 - **User-Agent**：必须走 `@tauri-apps/plugin-http`（Rust 侧 fetch）才能设 UA，webview fetch 不可
 - **HTTP 代理**：`@tauri-apps/plugin-http` 的 `fetch` 支持 `ClientOptions.proxy`，`proxy.ts` 把 store 里的配置转成 `{ all: { url, basicAuth? } }` 注入所有请求（bgm.ts/auth.ts 共用）。配置页提供地址（必填）+ 可选 Basic 认证 + 测试连接。封面/头像图片走 webview 不经此代理
-- **OAuth 回调**：本地回环服务器 `127.0.0.1:7359`，固定端口
+- **OAuth 回调**：本地回环服务器动态选端口（7359–7369，每个端口先 IPv6 `::1` 后 IPv4 `127.0.0.1`），首个可用即用；全部被占才回退手动粘贴 code 模式。换 token 的 `redirect_uri` 等于授权时用的动态值（Bangumi 实测支持，符合 RFC 8252 loopback OAuth），故无需在开发者后台登记回调地址。配置页可勾选「固定端口 7359」回退固定模式（需后台登记）。授权交互由 `useOAuthFlow` 状态机驱动（显式阶段 + 120s 倒计时 + 可取消）；Rust 绑定端口后 emit `oauth-port` 事件，JS 据此构造动态 `redirect_uri` 再开授权页。`doRefresh` 读取 store 持久化的 `redirect_uri` 保证刷新时传值一致。CSRF `state` 参数自动模式校验。
 - **凭据管理**：用户自填 client_id/secret，应用不内置凭据
 - **缓存**：TanStack Query，条目详情 staleTime 30min，收藏列表 1min + mutation 失效
 - **封面**：列表用 `images.small`（`object-contain`，容器比例 `aspect-[5/7]`），弹大图用 `images.medium`
