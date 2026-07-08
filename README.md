@@ -16,8 +16,8 @@
 <p align="center">
   <table>
     <tr>
-      <td><img src="images/追番.png" alt="追番" /></td>
-      <td><img src="images/收藏.png" alt="收藏" /></td>
+      <td><img src="images/追番.webp" alt="追番" /></td>
+      <td><img src="images/收藏.webp" alt="收藏" /></td>
     </tr>
     <tr>
       <td align="center"><sub>追番</sub></td>
@@ -29,8 +29,8 @@
 <p align="center">
   <table>
     <tr>
-      <td><img src="images/新番-表格.png" alt="新番-表格" /></td>
-      <td><img src="images/新番-列表.png" alt="新番-列表" /></td>
+      <td><img src="images/新番-表格.webp" alt="新番-表格" /></td>
+      <td><img src="images/新番-列表.webp" alt="新番-列表" /></td>
     </tr>
     <tr>
       <td align="center"><sub>新番-表格</sub></td>
