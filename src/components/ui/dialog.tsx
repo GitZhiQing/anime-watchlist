@@ -49,9 +49,12 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  variant = "default",
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
+  /** "default" = 标准带边框弹窗；"image" = 透明无边框大图查看（按图片宽高自适应并居中） */
+  variant?: "default" | "image"
 }) {
   return (
     <DialogPortal data-slot="dialog-portal">
@@ -59,7 +62,13 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          "fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border bg-background p-6 shadow-lg duration-200 outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-lg",
+          // 居中：fixed + left/top 50% + 负向 translate（依赖元素宽度由内容/max-width 决定）
+          "fixed top-[50%] left-[50%] z-50 grid translate-x-[-50%] translate-y-[-50%] duration-200 outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
+          variant === "default" &&
+            "w-full max-w-[calc(100%-2rem)] gap-4 rounded-lg border bg-background p-6 shadow-lg sm:max-w-lg",
+          // 大图查看：覆盖默认尺寸约束，按图片宽高自适应
+          variant === "image" &&
+            "w-auto max-w-[90vw] gap-0 border-none bg-transparent p-0 shadow-none sm:max-w-[90vw]",
           className
         )}
         {...props}

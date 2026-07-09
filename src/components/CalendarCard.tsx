@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Loader2, RotateCw, X } from "lucide-react";
+import type { ImgHTMLAttributes } from "react";
 import {
   Dialog,
   DialogClose,
@@ -17,6 +18,35 @@ import type { CalendarSubject } from "@/types/bgm";
 
 interface CalendarCardProps {
   item: CalendarSubject;
+}
+
+/**
+ * 正方形封面适配：
+ * - 竖版图片（宽 < 高）：object-cover 全宽铺满，裁掉超出正方形的上下两端（保留中间段）
+ * - 横版图片（宽 ≥ 高）：object-contain 全宽完整展示，上下留白
+ */
+function SquareCoverImg({
+  className,
+  onLoad,
+  ...props
+}: ImgHTMLAttributes<HTMLImageElement>) {
+  const [cover, setCover] = useState(false);
+  return (
+    <img
+      {...props}
+      loading="lazy"
+      onLoad={(e) => {
+        const { naturalWidth: w, naturalHeight: h } = e.currentTarget;
+        setCover(h > w); // 竖版才裁切
+        onLoad?.(e);
+      }}
+      className={cn(
+        "h-full w-full",
+        cover ? "object-cover" : "object-contain",
+        className,
+      )}
+    />
+  );
 }
 
 /** 键值对行 */
@@ -52,7 +82,7 @@ export function CalendarCard({ item }: CalendarCardProps) {
         {/* 封面区域：无封面时用占位高度防止坍缩 */}
         <div className="relative aspect-square w-full bg-muted/30">
           {cover ? (
-            <img src={cover} alt={title} loading="lazy" className="h-full w-full object-cover" />
+            <SquareCoverImg src={cover} alt={title} />
           ) : (
             <span className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground">
               暂无封面
@@ -168,18 +198,16 @@ function DetailBody({
               <img
                 src={coverMedium}
                 alt={title}
-                className="aspect-[5/7] w-24 rounded bg-muted/50 object-cover transition-opacity hover:opacity-80"
+                className="aspect-[5/7] w-24 rounded bg-muted/50 object-contain transition-opacity hover:opacity-80"
               />
             </button>
           </DialogTrigger>
-          <DialogContent
-            showCloseButton={false}
-            className="max-w-fit border-none bg-transparent p-0 shadow-none">
+          <DialogContent showCloseButton={false} variant="image">
             <DialogTitle className="sr-only">{title} 封面</DialogTitle>
             <img
               src={coverLarge}
               alt={title}
-              className="max-h-[80vh] max-w-[80vw] rounded object-contain"
+              className="max-h-[85vh] max-w-[90vw] rounded object-contain"
             />
           </DialogContent>
         </Dialog>

@@ -91,15 +91,12 @@ export function SubjectRow({
               />
             </button>
           </DialogTrigger>
-          <DialogContent
-            showCloseButton={false}
-            className="max-w-fit border-none bg-transparent p-0 shadow-none"
-          >
+          <DialogContent showCloseButton={false} variant="image">
             <DialogTitle className="sr-only">{title} 封面</DialogTitle>
             <img
               src={coverMedium}
               alt={title}
-              className="max-h-[80vh] max-w-[80vw] rounded object-contain"
+              className="max-h-[85vh] max-w-[90vw] rounded object-contain"
             />
           </DialogContent>
         </Dialog>
