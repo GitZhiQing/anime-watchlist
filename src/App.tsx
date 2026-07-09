@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { BookHeart, CalendarDays, Info, Loader2, Search, Settings } from "lucide-react";
 import { useQueries } from "@tanstack/react-query";
+import { PageLayout } from "@/components/layout/PageLayout";
 import { TitleBar } from "@/components/layout/TitleBar";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { Config } from "@/pages/Config";
@@ -137,13 +138,18 @@ export default function App() {
           ) : page === "calendar" ? (
             <Calendar />
           ) : userLoading ? (
-            <div className="flex items-center gap-2 p-6 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" /> 加载中…
-            </div>
+            <PageLayout title="追番">
+              <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+                <Loader2 className="mr-2 size-5 animate-spin" />
+                加载数据中...
+              </div>
+            </PageLayout>
           ) : !user ? (
-            <p className="p-6 text-sm text-muted-foreground">
-              请先到「配置」页完成 Bangumi 认证。
-            </p>
+            <PageLayout title="追番">
+              <p className="text-sm text-muted-foreground">
+                请先到「配置」页完成 Bangumi 认证。
+              </p>
+            </PageLayout>
           ) : (
             <WatchlistPage
               loading={loading}

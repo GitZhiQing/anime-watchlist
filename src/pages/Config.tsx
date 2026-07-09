@@ -208,14 +208,6 @@ export function Config() {
     flashSaved();
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" /> 加载中…
-      </div>
-    );
-  }
-
   // ===== 由 phase 派生的交互态 =====
   const phaseKind = phase.kind;
   const inFlow =
@@ -226,7 +218,13 @@ export function Config() {
 
   return (
     <PageLayout title="配置">
-      <div className="mx-auto max-w-xl space-y-6">
+      {loading ? (
+        <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+          <Loader2 className="mr-2 size-5 animate-spin" />
+          加载数据中...
+        </div>
+      ) : (
+        <div className="mx-auto max-w-xl space-y-6">
       {user ? (
         <section className="space-y-4 rounded-lg border border-border p-5">
           <div className="flex items-center gap-4">
@@ -543,6 +541,7 @@ export function Config() {
         )}
       </section>
       </div>
+      )}
     </PageLayout>
   );
 }

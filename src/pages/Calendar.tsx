@@ -1,10 +1,6 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, Loader2, RefreshCw, Star } from "lucide-react";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -66,9 +62,7 @@ function filterCalendarData(
   return data.map((day) => ({
     ...day,
     items: day.items.filter((item) => {
-      const total = item.collection
-        ? Object.values(item.collection).reduce((a, b) => a + b, 0)
-        : 0;
+      const total = item.collection ? Object.values(item.collection).reduce((a, b) => a + b, 0) : 0;
       return total >= threshold;
     }),
   }));
@@ -96,9 +90,7 @@ export function Calendar() {
     let month: number | null = null;
     for (const day of filteredData) {
       for (const item of day.items) {
-        const m = item.air_date
-          ? parseInt(item.air_date.split("-")[1], 10)
-          : NaN;
+        const m = item.air_date ? parseInt(item.air_date.split("-")[1], 10) : NaN;
         if (!isNaN(m) && m >= 1 && m <= 12) {
           month = m;
           break;
@@ -108,9 +100,7 @@ export function Calendar() {
     }
     if (month === null) month = new Date().getMonth() + 1;
 
-    const allIds = new Set(
-      filteredData.flatMap((d) => d.items.map((i) => i.id)),
-    );
+    const allIds = new Set(filteredData.flatMap((d) => d.items.map((i) => i.id)));
     const totalCount = allIds.size;
 
     const todayId = getTodayBangumiWeekday();
@@ -129,38 +119,6 @@ export function Calendar() {
     } else {
       setThresholdInput(String(threshold));
     }
-  }
-
-  /* ---- 状态渲染 ---- */
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" /> 加载放送表中…
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-destructive">
-        <span>{error instanceof Error ? error.message : "加载失败"}</span>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 px-2 text-xs"
-          onClick={() => refetch()}
-        >
-          <RefreshCw className="size-3" /> 重试
-        </Button>
-      </div>
-    );
-  }
-
-  if (!filteredData || filteredData.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground">暂无放送数据</p>
-    );
   }
 
   /* ---- 内容 ---- */
@@ -212,6 +170,7 @@ export function Calendar() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") applyThreshold(thresholdInput);
                 }}
+                disabled={isLoading}
                 className="h-7 w-16 text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               />
             </label>
@@ -222,17 +181,29 @@ export function Calendar() {
             variant="outline"
             size="icon-sm"
             onClick={() => refetch()}
-            disabled={isFetching}
-            title="刷新"
-          >
-            <RefreshCw
-              className={cn("size-4", isFetching && "animate-spin")}
-            />
+            disabled={isFetching || isLoading}
+            title="刷新">
+            <RefreshCw className={cn("size-4", (isFetching || isLoading) && "animate-spin")} />
           </Button>
         </>
-      }
-    >
-      {viewMode === "table" ? (
+      }>
+      {isLoading ? (
+        <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+          <Loader2 className="mr-2 size-5 animate-spin" />
+          加载数据中...
+        </div>
+      ) : error ? (
+        <div className="flex items-center justify-center gap-2 py-16 text-sm text-destructive">
+          <span>{error instanceof Error ? error.message : "加载失败"}</span>
+          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => refetch()}>
+            <RefreshCw className="size-3" /> 重试
+          </Button>
+        </div>
+      ) : !filteredData || filteredData.length === 0 ? (
+        <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+          暂无放送数据
+        </div>
+      ) : viewMode === "table" ? (
         <CalendarTable data={filteredData} />
       ) : (
         <CalendarList data={filteredData} />
@@ -294,51 +265,34 @@ function CalendarList({ data }: CalendarListProps) {
           <Collapsible
             key={day.weekday.id}
             open={open}
-            onOpenChange={(o) =>
-              setOpenMap((m) => ({ ...m, [day.weekday.id]: o }))
-            }
-            className="rounded-lg border border-border"
-          >
+            onOpenChange={(o) => setOpenMap((m) => ({ ...m, [day.weekday.id]: o }))}
+            className="rounded-lg border border-border">
             <CollapsibleTrigger
               className={cn(
                 "flex w-full items-center justify-between px-4 py-2.5 text-sm font-medium hover:bg-muted/50",
                 isToday && "bg-primary/5",
-              )}
-            >
+              )}>
               <span>
-                <span className={cn(isToday && "text-primary")}>
-                  {day.weekday.cn}
-                </span>
+                <span className={cn(isToday && "text-primary")}>{day.weekday.cn}</span>
                 {isToday && (
                   <span className="ml-1.5 rounded bg-primary px-1 py-0.5 text-[10px] text-primary-foreground">
                     今天
                   </span>
                 )}
-                <span className="ml-2 text-muted-foreground">
-                  ({day.items.length})
-                </span>
+                <span className="ml-2 text-muted-foreground">({day.items.length})</span>
               </span>
-              <ChevronDown
-                className={cn(
-                  "size-4 transition-transform",
-                  open && "rotate-180",
-                )}
-              />
+              <ChevronDown className={cn("size-4 transition-transform", open && "rotate-180")} />
             </CollapsibleTrigger>
             <CollapsibleContent>
               {day.items.length === 0 ? (
-                <div className="px-4 py-3 text-xs text-muted-foreground">
-                  暂无
-                </div>
+                <div className="px-4 py-3 text-xs text-muted-foreground">暂无</div>
               ) : (
                 <div className="border-t border-border p-1">
                   {day.items.map((item) => (
                     <SubjectRow
                       key={item.id}
                       subject={calendarToSlimSubject(item)}
-                      extraInfo={
-                        <CalendarExtraInfo item={item} />
-                      }
+                      extraInfo={<CalendarExtraInfo item={item} />}
                       expandedAction={
                         <div className="flex items-center gap-2">
                           <CollectAction subjectId={item.id} />

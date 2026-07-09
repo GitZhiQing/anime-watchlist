@@ -23,15 +23,15 @@ export function SubjectDetail({ subjectId }: SubjectDetailProps) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
-        <Loader2 className="size-3.5 animate-spin" /> 加载详情…
+      <div className="flex items-center justify-center gap-2 py-3 text-xs text-muted-foreground">
+        <Loader2 className="size-3.5 animate-spin" /> 加载数据中...
       </div>
     );
   }
 
   if (error || !detail) {
     return (
-      <div className="flex items-center gap-2 py-3 text-xs text-destructive">
+      <div className="flex items-center justify-center gap-2 py-3 text-xs text-destructive">
         <span>{error ? "详情加载失败" : "无详情"}</span>
         <Button
           variant="ghost"

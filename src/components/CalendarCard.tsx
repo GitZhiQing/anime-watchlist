@@ -138,15 +138,15 @@ function DetailBody({
 }: DetailBodyProps) {
   if (isLoading) {
     return (
-      <div className="flex min-h-0 flex-1 items-center gap-2 pt-3 text-xs text-muted-foreground">
-        <Loader2 className="size-3.5 animate-spin" /> 加载详情…
+      <div className="flex min-h-0 flex-1 items-center justify-center gap-2 pt-3 text-xs text-muted-foreground">
+        <Loader2 className="size-3.5 animate-spin" /> 加载数据中...
       </div>
     );
   }
 
   if (error || !detail) {
     return (
-      <div className="flex min-h-0 flex-1 items-center gap-2 pt-3 text-xs text-destructive">
+      <div className="flex min-h-0 flex-1 items-center justify-center gap-2 pt-3 text-xs text-destructive">
         <span>{error ? "详情加载失败" : "无详情"}</span>
         <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={onRetry}>
           <RotateCw className="size-3" /> 重试
