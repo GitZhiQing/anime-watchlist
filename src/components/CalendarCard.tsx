@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { CollectAction } from "@/components/CollectAction";
 import { BangumiLink } from "@/components/BangumiLink";
 import { useSubjectDetail } from "@/lib/queries";
+import { SubjectFields, SubjectTags, SubjectSummary } from "@/components/SubjectFields";
 import { cn } from "@/lib/utils";
 import { SubjectType, SUBJECT_LABELS, SUBJECT_BADGE_STYLES } from "@/types/bgm";
 import type { CalendarSubject } from "@/types/bgm";
@@ -46,17 +47,6 @@ function SquareCoverImg({
         className,
       )}
     />
-  );
-}
-
-/** 键值对行 */
-function Field({ label, value }: { label: string; value?: React.ReactNode }) {
-  if (value === undefined || value === null || value === "") return null;
-  return (
-    <div className="flex gap-2 text-xs">
-      <span className="w-16 shrink-0 text-muted-foreground">{label}</span>
-      <span className="min-w-0 flex-1 break-words">{value}</span>
-    </div>
   );
 }
 
@@ -185,9 +175,6 @@ function DetailBody({
     );
   }
 
-  const score = detail.rating?.score;
-  const allTags = detail.tags ?? [];
-
   return (
     <div className="flex min-h-0 flex-1 flex-col pt-1">
       {/* 封面行：封面 + 字段 */}
@@ -211,48 +198,20 @@ function DetailBody({
             />
           </DialogContent>
         </Dialog>
-        <div className="min-w-0 flex-1 space-y-0.5">
-          <Field label="原名" value={detail.name} />
-          <Field label="中文名" value={detail.name_cn} />
-          <Field
-            label="评分"
-            value={
-              score ? (
-                <span>
-                  ★ {score.toFixed(1)}
-                  {detail.rating?.total ? `（${detail.rating.total} 人评分）` : ""}
-                </span>
-              ) : undefined
-            }
-          />
-          <Field
-            label="话数"
-            value={detail.total_episodes ? `${detail.total_episodes} 话` : undefined}
-          />
-          <Field label="放送开始" value={detail.date} />
-          <Field label="平台" value={detail.platform} />
-        </div>
+        <SubjectFields subject={detail} className="min-w-0 flex-1 space-y-0.5" />
       </div>
 
       {/* 标签：独占一行，固定不滚动 */}
-      {allTags.length > 0 && (
+      {detail.tags && detail.tags.length > 0 && (
         <div className="shrink-0 pb-2 pt-2">
-          <div className="flex flex-wrap gap-1">
-            {allTags.map((t) => (
-              <span key={t.name} className="rounded bg-muted px-1.5 py-0.5 text-xs">
-                {t.name}
-              </span>
-            ))}
-          </div>
+          <SubjectTags tags={detail.tags} />
         </div>
       )}
 
       {/* 简介：独占一行，可滚动，占据剩余空间 */}
       {detail.summary && (
         <div className="min-h-0 flex-1 overflow-y-auto pt-2">
-          <p className="whitespace-pre-line text-xs leading-relaxed text-muted-foreground">
-            {detail.summary}
-          </p>
+          <SubjectSummary summary={detail.summary} />
         </div>
       )}
     </div>

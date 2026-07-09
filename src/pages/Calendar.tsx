@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ChevronDown, Loader2, Minus, Plus, RefreshCw, Star } from "lucide-react";
+import { ChevronDown, Loader2, Minus, Plus, RefreshCw } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -36,15 +36,18 @@ function calendarToSlimSubject(cs: CalendarSubject): SlimSubject {
     name: cs.name,
     name_cn: cs.name_cn,
     short_summary: cs.summary,
-    // MetaRow 由 extraInfo 替代，设 0 使其隐藏
-    date: "",
+    // 共性字段映射到 SlimSubject，使 MetaRow（评分/话数/放送日期）与追番、收藏页一致
+    // date 后拼接星期，用   保持与 MetaRow gap-x-3 一致的间距
+    date: cs.air_date
+      ? `${cs.air_date}    周${WEEKDAY_CN[cs.air_weekday] || ""}`
+      : "",
     images: {
       ...cs.images,
       small: cs.images?.common || cs.images?.grid || cs.images?.medium || cs.images?.small,
       medium: cs.images?.large || cs.images?.common || cs.images?.medium,
     },
-    eps: 0,
-    score: 0,
+    eps: cs.eps || cs.eps_count || undefined,
+    score: cs.rating?.score ?? 0,
     rank: cs.rating?.rank,
     collection_total: cs.collection
       ? Object.values(cs.collection).reduce((a, b) => a + b, 0)
@@ -243,33 +246,13 @@ export function Calendar() {
 
 /* ---- 列表视图子组件 ---- */
 
-/** 列表态额外信息：原名 / 放送日期 周x · 评分 · 共 xxx 人在看 */
+/** 列表态新番特有信息：在看人数（评分、话数、放送日期及周几已由 MetaRow 统一展示） */
 function CalendarExtraInfo({ item }: { item: CalendarSubject }) {
-  const hasName = item.name && item.name !== item.name_cn;
-  const weekday = item.air_weekday ? `周${WEEKDAY_CN[item.air_weekday] || ""}` : "";
-  const hasScore = item.rating?.score != null && item.rating.score > 0;
   const doing = item.collection?.doing ? `共 ${item.collection.doing} 人在看` : "";
 
-  if (!hasName && !item.air_date && !weekday && !hasScore && !doing) return null;
+  if (!doing) return null;
 
-  return (
-    <div className="space-y-0.5 text-xs text-muted-foreground">
-      {hasName && <p>原名：{item.name}</p>}
-      {(hasScore || doing || item.air_date || weekday) && (
-        <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
-          {hasScore && (
-            <span className="inline-flex items-center gap-0.5">
-              <Star className="size-3 fill-current text-amber-500" />
-              {item.rating!.score!.toFixed(1)}
-            </span>
-          )}
-          {doing && <span>{doing}</span>}
-          {item.air_date && <span>{item.air_date}</span>}
-          {weekday && <span>{weekday}</span>}
-        </p>
-      )}
-    </div>
-  );
+  return <p className="text-xs text-muted-foreground">{doing}</p>;
 }
 
 interface CalendarListProps {

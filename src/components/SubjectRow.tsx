@@ -31,8 +31,8 @@ const MAX_TAGS = 10;
 
 /** 列表态元信息行：评分 / 话数 / 放送时间。值为 0/空则隐藏对应项。 */
 function MetaRow({ subject }: { subject: SlimSubject }) {
-  const score = subject.score && subject.score > 0;
-  const eps = subject.eps && subject.eps > 0;
+  const score = !!(subject.score && subject.score > 0);
+  const eps = !!(subject.eps && subject.eps > 0);
   const hasDate = !!subject.date;
   if (!score && !eps && !hasDate) return null;
 
