@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
-import { ChevronDown, Loader2, RefreshCw, Star } from "lucide-react";
+import { ChevronDown, Loader2, Minus, Plus, RefreshCw, Star } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
+import { ButtonGroup } from "@/components/ui/button-group";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageLayout } from "@/components/layout/PageLayout";
@@ -121,6 +122,13 @@ export function Calendar() {
     }
   }
 
+  /** 点击 ±100：在当前阈值基础上增减（下限 0），并立即应用。 */
+  function step(delta: number) {
+    const next = Math.max(0, threshold + delta);
+    setThreshold(next);
+    setThresholdInput(String(next));
+  }
+
   /* ---- 内容 ---- */
 
   return (
@@ -159,21 +167,42 @@ export function Calendar() {
 
           {/* 精简模式下的阈值输入 */}
           {density === "compact" && (
-            <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
-              收藏人数 ≥
-              <Input
-                type="number"
-                min={0}
-                value={thresholdInput}
-                onChange={(e) => setThresholdInput(e.target.value)}
-                onBlur={(e) => applyThreshold(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") applyThreshold(thresholdInput);
-                }}
-                disabled={isLoading}
-                className="h-7 w-16 text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-              />
-            </label>
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <span>在看人数 ≥</span>
+              <ButtonGroup>
+                <Input
+                  type="number"
+                  min={0}
+                  value={thresholdInput}
+                  onChange={(e) => setThresholdInput(e.target.value)}
+                  onBlur={(e) => applyThreshold(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") applyThreshold(thresholdInput);
+                  }}
+                  disabled={isLoading}
+                  aria-label="在看人数阈值"
+                  className="h-8 w-16 text-center text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                />
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  title="加 100"
+                  disabled={isLoading}
+                  onClick={() => step(100)}
+                >
+                  <Plus className="size-3.5" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  title="减 100"
+                  disabled={isLoading}
+                  onClick={() => step(-100)}
+                >
+                  <Minus className="size-3.5" />
+                </Button>
+              </ButtonGroup>
+            </div>
           )}
 
           {/* 刷新按钮 */}
