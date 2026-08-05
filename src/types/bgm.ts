@@ -1,4 +1,5 @@
-// Bangumi 数据类型，依据 docs/BGM-API/open-api/v0.yaml 与 TMP.json 样例定义。
+// Bangumi 数据类型，依据官方 v0 OpenAPI 规范（https://github.com/bangumi/api/blob/master/open-api/v0.yaml）
+// 与 TMP.json 样例定义。接口说明见 docs/api/v0.md。
 
 /** 条目类型 SubjectType。本应用只用 Book(1)=漫画 / Anime(2)=动画 */
 export enum SubjectType {
@@ -232,4 +233,41 @@ export interface CalendarDay {
     id: number;
   };
   items: CalendarSubject[];
+}
+
+// ===== p1 私有 API 类型（next.bgm.tv，Web 前端使用） =====
+// 字段命名与 v0 不同（nameCN/metaTags），供 lib/trending.ts 映射到 SlimSubject。
+
+/** /p1/trending/subjects 返回的单条条目 */
+export interface P1TrendingSubject {
+  subject: {
+    id: number;
+    name: string;
+    nameCN: string;
+    type: number;
+    info: string;
+    metaTags?: string[];
+    rating?: {
+      rank: number;
+      score: number;
+      total: number;
+      count: number[];
+    };
+    locked?: boolean;
+    nsfw?: boolean;
+    images: SubjectImages;
+  };
+  /** 新增热度值 */
+  count: number;
+}
+
+export interface P1TrendingResponse {
+  data: P1TrendingSubject[];
+}
+
+/** 热度榜条目：p1 的 count（新增热度）或 calendar 兜底的 doing（追番人数） */
+export interface TrendingItem {
+  subject: SlimSubject;
+  heat: number;
+  source: "trends" | "calendar";
 }
