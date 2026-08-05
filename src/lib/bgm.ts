@@ -263,30 +263,64 @@ export function getUserCollections(
   );
 }
 
+/** 单类型内分页并发数；5 类型并行时峰值并发 ≈ 5 + 5×cap，cap 取 2 兼顾速度与限流 */
+const PAGE_CONCURRENCY = 2;
+/** 单类型最大页数上限，与旧顺序循环的 100 次上限一致（5000 条/类型） */
+const MAX_PAGES = 100;
+
+/** 有界并发 map：最多 concurrency 个任务并行，结果按输入顺序返回。
+ *  任一任务失败 → 停止派发新任务，等在途任务落定后整体 reject（无悬挂/未捕获）。 */
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  fn: (item: T) => Promise<R>,
+  concurrency: number,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  let error: unknown;
+  const workers = Array.from(
+    { length: Math.max(1, Math.min(concurrency, items.length)) },
+    async () => {
+      for (;;) {
+        const i = next++;
+        if (i >= items.length || error) return;
+        try {
+          results[i] = await fn(items[i]);
+        } catch (e) {
+          error ??= e;
+          next = items.length; // 停止派发新任务
+          return;
+        }
+      }
+    },
+  );
+  await Promise.all(workers);
+  if (error) throw error;
+  return results;
+}
+
 /**
  * 翻页拉取某类型的全部收藏，直到累计达到 total。
- * 解决单页 limit 截断导致数据不全的问题。
+ * 先取第 0 页获知 total，再按 offset 有界并发抓取剩余页，缩短总等待时间。
+ * 结果按 offset 升序拼接，与旧顺序循环的返回顺序一致。
  */
 export async function getAllUserCollections(
   username: string,
   subjectType: number,
   pageSize = 50,
 ): Promise<UserCollection[]> {
-  const all: UserCollection[] = [];
-  let offset = 0;
-  // 上限保护，避免异常情况下死循环
-  for (let i = 0; i < 100; i++) {
-    const page = await getUserCollections(
-      username,
-      subjectType,
-      pageSize,
-      offset,
-    );
-    all.push(...page.data);
-    if (all.length >= page.total || page.data.length === 0) break;
-    offset += page.data.length;
-  }
-  return all;
+  const first = await getUserCollections(username, subjectType, pageSize, 0);
+  // 只有服务器实际把响应 limit 压到 pageSize 以下时才信任 first.limit（防止跳过条目）
+  const step = first.limit > 0 && first.limit < pageSize ? first.limit : pageSize;
+  const pageCount = Math.min(Math.ceil(first.total / step), MAX_PAGES);
+  if (pageCount <= 1) return first.data;
+  const offsets = Array.from({ length: pageCount - 1 }, (_, i) => (i + 1) * step);
+  const rest = await mapWithConcurrency(
+    offsets,
+    (offset) => getUserCollections(username, subjectType, pageSize, offset),
+    PAGE_CONCURRENCY,
+  );
+  return [...first.data, ...rest.flatMap((p) => p.data)];
 }
 
 /**

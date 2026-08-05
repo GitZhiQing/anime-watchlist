@@ -158,6 +158,8 @@ function Watchlist({
 
 interface WatchlistPageProps {
   loading: boolean;
+  /** 首次加载门控：全部相关查询就绪前为 true，期间显示 spinner 而非部分列表 */
+  initialLoading: boolean;
   error: Error | null;
   totalCount: number;
   groups: Record<number, UserCollection[]>;
@@ -171,6 +173,7 @@ interface WatchlistPageProps {
 
 export function WatchlistPage({
   loading,
+  initialLoading,
   error,
   totalCount,
   groups,
@@ -209,7 +212,7 @@ export function WatchlistPage({
         <>
           追番
           <span className="ml-2 text-sm font-normal text-muted-foreground">
-            共 {totalCount} 部
+            {initialLoading ? "加载中..." : `共 ${totalCount} 部`}
           </span>
         </>
       }
@@ -228,16 +231,25 @@ export function WatchlistPage({
         />
       }
     >
-      {error && (
-        <p className="mb-2 text-sm text-destructive">
-          {error instanceof Error ? error.message : "加载失败"}
-        </p>
+      {initialLoading ? (
+        <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+          <Loader2 className="mr-2 size-5 animate-spin" />
+          加载数据中...
+        </div>
+      ) : (
+        <>
+          {error && (
+            <p className="mb-2 text-sm text-destructive">
+              {error instanceof Error ? error.message : "加载失败"}
+            </p>
+          )}
+          <Watchlist
+            groups={groups}
+            openMap={openMap}
+            setOpenMap={setOpenMap}
+          />
+        </>
       )}
-      <Watchlist
-        groups={groups}
-        openMap={openMap}
-        setOpenMap={setOpenMap}
-      />
     </PageLayout>
   );
 }

@@ -72,6 +72,15 @@ export default function App() {
     undefined,
   );
 
+  /**
+   * 首次加载门控：相关查询从未 resolve 时（status 'pending'）为 true，用于显示 spinner。
+   * 与 loading（isFetching）区分开——后台/手动刷新时不至于把已有列表清空。
+   * 选中单类型时只等待该类型；「全部」时等全部类型就绪。
+   */
+  const initialLoading = subjectType
+    ? queries[SUBJECT_TYPES.indexOf(subjectType)]?.isPending ?? true
+    : queries.some((q) => q.isPending);
+
   const groups = useMemo(() => {
     const items = subjectType
       ? bySubjectType[subjectType] ?? []
@@ -153,6 +162,7 @@ export default function App() {
           ) : (
             <WatchlistPage
               loading={loading}
+              initialLoading={initialLoading}
               error={error ?? null}
               totalCount={totalCount}
               groups={groups}
