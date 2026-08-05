@@ -43,7 +43,7 @@ src-tauri/
   src/main.rs
   capabilities/default.json  # 权限（窗口/store/http/opener）
   tauri.conf.json       # 无边框窗口、Vite dev URL
-docs/                   # 设计文档 + Bangumi OpenAPI 规约
+docs/                   # 文档索引（api/ 接口文档 + dev/ 开发文档，见 docs/README.md）
 ```
 
 ## 关键设计决策

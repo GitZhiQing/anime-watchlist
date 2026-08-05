@@ -199,9 +199,7 @@ npm run release 1.2.3   # 指定精确版本号
 
 > Release notes 注意：tag-push 触发的 workflow 运行的是**该 tag 指向 commit 上的 workflow 文件**，因此若发版后修改了 `release.yml`，需在新 tag 上才能生效（不能仅重打旧 tag）。
 
-完整流水线：`npm run release <bump>` → 推送标签 → Actions 自动构建 → GitHub Release 页面出现便携 zip。
-
-完整流水线：`npm run release <bump>` → 推送标签 → Actions 自动构建 → GitHub Release 页面出现产物。
+完整流水线：`npm run release <bump>` → 推送标签 → Actions 自动构建 → GitHub Release 页面出现便携 zip 产物。
 
 **首次发布前**需配置远程仓库：
 ```bash
