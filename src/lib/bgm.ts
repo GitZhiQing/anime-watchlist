@@ -22,7 +22,7 @@ export const OAUTH_BASE = "https://bgm.tv";
 // 避免 IPv6→IPv4 回退延迟。bgm.tv 后台回调地址需登记此字面量。
 export const REDIRECT_URI = "http://localhost:7359/callback";
 export const USER_AGENT =
-  "GitZhiQing/anime-watchlist/1.1.0 (https://github.com/GitZhiQing/anime-watchlist)";
+  "GitZhiQing/anime-watchlist/1.2.0 (https://github.com/GitZhiQing/anime-watchlist)";
 
 export class BgmError extends Error {
   status: number;
