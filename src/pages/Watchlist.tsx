@@ -1,6 +1,7 @@
-import { useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronDown, Loader2 } from "lucide-react";
+import { SearchInput } from "@/components/SearchInput";
 import {
   Collapsible,
   CollapsibleContent,
@@ -28,6 +29,15 @@ import type { UserCollection } from "@/types/bgm";
 import { cn, smoothScrollTo } from "@/lib/utils";
 
 /* ---- 追番列表展示组件（纯展示，与 WatchlistToolbar 分开） ---- */
+
+/** 本地关键词匹配：条目原名/中文名/标签 任一命中即匹配（大小写不敏感） */
+function matchesKeyword(item: UserCollection, q: string): boolean {
+  const s = item.subject;
+  const hay = `${s?.name ?? ""} ${s?.name_cn ?? ""} ${(s?.tags ?? [])
+    .map((t) => t.name ?? "")
+    .join(" ")}`.toLowerCase();
+  return hay.includes(q);
+}
 
 interface WatchlistProps {
   groups: Record<number, UserCollection[]>;
@@ -187,6 +197,23 @@ export function WatchlistPage({
   const scrollRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
 
+  const [keyword, setKeyword] = useState("");
+
+  const filteredGroups = useMemo(() => {
+    const q = keyword.trim().toLowerCase();
+    if (!q) return groups; // 空关键词恒等快路径
+    const out: Record<number, UserCollection[]> = {};
+    for (const type of COLLECTION_ORDER) {
+      out[type] = (groups[type] ?? []).filter((c) => matchesKeyword(c, q));
+    }
+    return out;
+  }, [groups, keyword]);
+
+  const hasMatches = useMemo(
+    () => COLLECTION_ORDER.some((t) => (filteredGroups[t] ?? []).length > 0),
+    [filteredGroups],
+  );
+
   function refresh() {
     qc.refetchQueries({ queryKey: ["collections"] });
   }
@@ -218,17 +245,25 @@ export function WatchlistPage({
       }
       scrollRef={scrollRef}
       toolbar={
-        <WatchlistToolbar
-          loading={loading}
-          totalCount={totalCount}
-          counts={counts}
-          subjectCounts={subjectCounts}
-          subjectType={subjectType}
-          onSubjectTypeChange={onSubjectTypeChange}
-          onRefresh={refresh}
-          onJumpTo={jumpTo}
-          onJumpToTop={jumpToTop}
-        />
+        <>
+          <SearchInput
+            value={keyword}
+            onChange={setKeyword}
+            placeholder="条目名称/标签"
+            className="w-44"
+          />
+          <WatchlistToolbar
+            loading={loading}
+            totalCount={totalCount}
+            counts={counts}
+            subjectCounts={subjectCounts}
+            subjectType={subjectType}
+            onSubjectTypeChange={onSubjectTypeChange}
+            onRefresh={refresh}
+            onJumpTo={jumpTo}
+            onJumpToTop={jumpToTop}
+          />
+        </>
       }
     >
       {initialLoading ? (
@@ -243,11 +278,17 @@ export function WatchlistPage({
               {error instanceof Error ? error.message : "加载失败"}
             </p>
           )}
-          <Watchlist
-            groups={groups}
-            openMap={openMap}
-            setOpenMap={setOpenMap}
-          />
+          {hasMatches || keyword.trim() === "" ? (
+            <Watchlist
+              groups={filteredGroups}
+              openMap={openMap}
+              setOpenMap={setOpenMap}
+            />
+          ) : (
+            <p className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+              未找到匹配的条目
+            </p>
+          )}
         </>
       )}
     </PageLayout>

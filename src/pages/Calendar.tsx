@@ -10,6 +10,7 @@ import { SubjectRow } from "@/components/SubjectRow";
 import { BangumiLink } from "@/components/BangumiLink";
 import { CollectAction } from "@/components/CollectAction";
 import { CalendarTable } from "@/components/CalendarTable";
+import { SearchInput } from "@/components/SearchInput";
 import { useCalendar } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import type { CalendarDay, CalendarSubject, SlimSubject } from "@/types/bgm";
@@ -56,20 +57,28 @@ function calendarToSlimSubject(cs: CalendarSubject): SlimSubject {
   };
 }
 
-/** 过滤放送数据：精简模式下按收藏数阈值过滤 */
+/** 过滤放送数据：精简模式按收藏数阈值 + 关键词按名称/中文名（大小写不敏感），两者取交集 */
 function filterCalendarData(
   data: CalendarDay[],
   density: DensityMode,
   threshold: number,
+  keyword: string,
 ): CalendarDay[] {
-  if (density === "full") return data;
-  return data.map((day) => ({
-    ...day,
-    items: day.items.filter((item) => {
-      const total = item.collection ? Object.values(item.collection).reduce((a, b) => a + b, 0) : 0;
-      return total >= threshold;
-    }),
-  }));
+  const q = keyword.trim().toLowerCase();
+  if (density === "full" && !q) return data; // 无过滤时恒等快路径
+  return data.map((day) => {
+    let items = day.items;
+    if (density === "compact") {
+      items = items.filter((it) => {
+        const total = it.collection ? Object.values(it.collection).reduce((a, b) => a + b, 0) : 0;
+        return total >= threshold;
+      });
+    }
+    if (q) {
+      items = items.filter((it) => `${it.name ?? ""} ${it.name_cn ?? ""}`.toLowerCase().includes(q));
+    }
+    return items === day.items ? day : { ...day, items }; // 未变动的一天保持引用
+  });
 }
 
 /* ---- 页面组件 ---- */
@@ -80,11 +89,18 @@ export function Calendar() {
   const [density, setDensity] = useState<DensityMode>("full");
   const [threshold, setThreshold] = useState(100);
   const [thresholdInput, setThresholdInput] = useState("100");
+  const [keyword, setKeyword] = useState("");
 
   /* 过滤后的数据 */
   const filteredData = useMemo(
-    () => (data ? filterCalendarData(data, density, threshold) : undefined),
-    [data, density, threshold],
+    () => (data ? filterCalendarData(data, density, threshold, keyword) : undefined),
+    [data, density, threshold, keyword],
+  );
+
+  /* 过滤后是否还有条目（全为空则显示空态提示） */
+  const filteredHasItems = useMemo(
+    () => (filteredData ?? []).some((d) => d.items.length > 0),
+    [filteredData],
   );
 
   /* 标题统计（基于过滤后数据） */
@@ -152,6 +168,12 @@ export function Calendar() {
       }
       toolbar={
         <>
+          <SearchInput
+            value={keyword}
+            onChange={setKeyword}
+            placeholder="新番名称"
+            className="w-44"
+          />
           {/* 视图切换 */}
           <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
             <TabsList className="border border-border bg-background">
@@ -235,10 +257,20 @@ export function Calendar() {
         <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
           暂无放送数据
         </div>
-      ) : viewMode === "table" ? (
-        <CalendarTable data={filteredData} />
       ) : (
-        <CalendarList data={filteredData} />
+        <>
+          {filteredHasItems ? (
+            viewMode === "table" ? (
+              <CalendarTable data={filteredData} />
+            ) : (
+              <CalendarList data={filteredData} />
+            )
+          ) : (
+            <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+              {keyword.trim() ? "未找到匹配的条目" : "暂无放送数据"}
+            </div>
+          )}
+        </>
       )}
     </PageLayout>
   );
