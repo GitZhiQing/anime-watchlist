@@ -9,7 +9,8 @@ npm install              # 安装依赖
 npm run tauri dev        # 开发（Vite HMR + Tauri 窗口）
 npm run tauri build      # 生产构建（便携 exe；bundle.active=false 不产 NSIS/MSI 安装包）
 npx tsc --noEmit         # 仅类型检查
-npm run release patch    # 发版（补丁/小/大版本号 或 指定 X.Y.Z）
+npm run bump minor       # 仅更新版本并提交（不打 tag 不推送）
+npm run release patch    # 发布（更新 + 提交 + 打 tag + 推送，触发 CI）
 ```
 
 ## 架构
@@ -56,33 +57,38 @@ docs/                   # 文档索引（api/ 接口文档 + dev/ 开发文档�
 - **缓存**：TanStack Query，条目详情 staleTime 30min，收藏列表 1min + mutation 失效
 - **封面**：列表用 `images.small`（`object-contain`，容器比例 `aspect-[5/7]`），弹大图用 `images.medium`
 
-## 版本发布
+## 版本更新与发布（两件事）
 
-**版本号以 `package.json` 为单一权威源**，其余文件由 `scripts/release.mjs` 自动同步：
+**版本号以 `package.json` 为单一权威源**，其余 4 处由 `scripts/release.mjs` 自动同步：
 
-| 文件 | 字段 | 同步方式 |
-|---|---|---|
-| `package.json` | `version` | 手动修改或脚本递增 |
-| `src-tauri/Cargo.toml` | `package.version` | 脚本正则替换 |
-| `src-tauri/tauri.conf.json` | `version` | 脚本 JSON 写入 |
-| `src-tauri/Cargo.lock` | `anime-watchlist` 包的 `version` | 脚本块锚定正则替换 |
-| `src/lib/bgm.ts` | `USER_AGENT` 中的 `anime-watchlist/<version>` | 脚本正则替换 |
+| 文件                          | 字段                                              |
+| ----------------------------- | ------------------------------------------------- |
+| `package.json`              | `version`（权威源）                             |
+| `src-tauri/Cargo.toml`      | `package.version`                               |
+| `src-tauri/tauri.conf.json` | `version`                                       |
+| `src-tauri/Cargo.lock`      | `anime-watchlist` 包 `version`                |
+| `src/lib/bgm.ts`            | `USER_AGENT` 中的 `anime-watchlist/<version>` |
 
 前端 `src/pages/About.tsx` 通过 Vite `define` 在构建时注入版本号（`vite.config.ts` 读取 `package.json` 的 `version` → `import.meta.env.VITE_APP_VERSION`），无需硬编码。
 
-### 发版流程
+「更新版本」≠「发布版本」，是两步：
 
-```
-npm run release <bump>  →  同步 5 处版本文件  →  git commit  →  git tag vX.Y.Z  →  git push --tags
-                                                                                       ↓
-                                                                         GitHub Actions 自动触发
-                                                                                       ↓
-                                                                    构建 portable exe → 打包 zip → 发布 GitHub Release
-```
+- **更新版本**（只改版本号 + 提交，**不打 tag 不推送**）：
+  ```bash
+  npm run bump <patch|minor|major|X.Y.Z>
+  ```
+- **发布版本**（更新（如需）+ 提交 + **打 tag vX.Y.Z 并推送** → 触发 CI 构建发布）：
+  ```bash
+  npm run release <patch|minor|major|X.Y.Z>
+  ```
 
-命令：`patch`（0.1.0→0.1.1）、`minor`（0.1.0→0.2.0）、`major`（0.1.0→1.0.0）或直接指定如 `1.2.3`。版本号相同时仅打标签不提交（用于首次发版/重打标签）。
+  已用 `npm run bump` 更新过 → 直接 `npm run release X.Y.Z`（脚本只打 tag + 推送）。
 
-CI 配置在 `.github/workflows/release.yml`，在 `windows-latest` 上构建。Checkout 用 `actions/checkout@v5`（`fetch-depth: 0`，确保 release notes 能取到上一个 tag 至当前的全部提交），产物为便携 zip，通过 `gh release create` 上传并自动生成 release notes。
+**CI 触发**：`.github/workflows/release.yml` 仅在推送 `v*` tag 时触发（`on: push: tags: v*`），推 `main` 不会触发。**发布 = 打 tag 推送，不是推 main。**
+
+CI 在 `windows-latest`：安装依赖 → `npm run tauri build` → 打包便携 zip → `gh release create` 上传并自动生成 release notes（Checkout 用 `actions/checkout@v5`、`fetch-depth: 0` 取上一 tag 起的提交）。
+
+详情见 `docs/dev/release.md`。
 
 ## 注意
 

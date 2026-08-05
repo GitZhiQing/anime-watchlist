@@ -10,6 +10,7 @@
 | [api/p1.md](api/p1.md) | Bangumi **p1 私有 API**（`next.bgm.tv`）：热度榜接口、完整接口清单、原始文档 URL |
 | [dev/dev.md](dev/dev.md) | 项目概览：技术栈、页面布局、功能说明 |
 | [dev/tech.md](dev/tech.md) | 技术报告：架构决策、版本管理、构建与发布 |
+| [dev/release.md](dev/release.md) | 版本更新与发布手册：更新 vs 发布、CI 触发、验证 |
 
 ## 速查
 

@@ -160,28 +160,30 @@ Bangumi OAuth 2.0 流程：应用注册 → 获取授权码 → 换访问令牌�
 ### 5.1 开发与构建命令
 
 ```bash
-npm run dev          # Vite 开发服务器（端口 3000，HMR 3001）
-npm run tauri dev    # Tauri 开发模式（Vite HMR + Tauri 窗口）
-npm run build        # TypeScript 类型检查 + Vite 构建 → dist/
-npm run tauri build  # 前端构建 + Rust release 编译（bundle.active=false，不产安装包）
+npm run dev           # Vite 开发服务器（端口 3000，HMR 3001）
+npm run tauri dev     # Tauri 开发模式（Vite HMR + Tauri 窗口）
+npm run build         # TypeScript 类型检查 + Vite 构建 → dist/
+npm run tauri build   # 前端构建 + Rust release 编译（bundle.active=false，不产安装包）
+npm run bump <bump>   # 仅更新版本：改 5 处版本号 + 提交（不打 tag 不推送）
+npm run release <bump> # 发布：更新 + 提交 + 打 tag + 推送（触发 CI）
 ```
 
 产物：`src-tauri/target/release/anime-watchlist.exe`（便携 exe）+ 前端 `dist/`。本项目的 `bundle.active` 设为 `false`，不发 NSIS/MSI 安装包；CI 另行把 exe + dist 打成便携 zip 发布。
 
-### 5.2 一键发布脚本
+### 5.2 版本更新与发布（两件事）
+
+「更新版本」和「发布版本」是两步，对应两条命令（完整手册见 `docs/dev/release.md`）：
 
 ```bash
-npm run release patch   # 补丁版本：0.1.0 → 0.1.1
-npm run release minor   # 小版本：  0.1.0 → 0.2.0
-npm run release major   # 大版本：  0.1.0 → 1.0.0
-npm run release 1.2.3   # 指定精确版本号
+npm run bump <bump>      # 更新版本：改 5 处版本号 + 提交，不打 tag 不推送
+npm run release <bump>   # 发布：更新（如需）+ 提交 + 打 tag + 推送 → 触发 CI
 ```
 
-脚本 (`scripts/release.mjs`) 执行流程：
-1. 从 `package.json` 读取当前版本，按参数计算新版本号
-2. 同步更新 5 处版本文件：`package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.lock`、`src/lib/bgm.ts`
-3. `git add` → `git commit -m "chore: bump version to vX.Y.Z"`
-4. `git tag vX.Y.Z` → `git push && git push --tags`
+`<bump>` 取值：`patch`（1.0.0→1.0.1）、`minor`（1.0.0→1.1.0）、`major`（1.0.0→2.0.0），或直接指定如 `1.2.3`。
+
+脚本（`scripts/release.mjs`）：
+- `update` 模式（`npm run bump`）：读 `package.json` 当前版本 → 同步 5 处版本文件（`package.json`、`src-tauri/Cargo.toml`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.lock`、`src/lib/bgm.ts`）→ 提交 `chore: bump version to vX.Y.Z`，止步于此（不打 tag 不推送）。
+- 发布模式（`npm run release`）：上述步骤 + `git tag vX.Y.Z` → `git push && git push --tags`。版本号已一致时仅打 tag + 推送（用于先 `bump` 后的发布 / 重打标签）。
 
 ### 5.3 CI/CD 自动构建
 
