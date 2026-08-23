@@ -5,6 +5,7 @@ import {
   QueryCache,
   QueryClient,
   useQuery,
+  useInfiniteQuery,
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
@@ -16,7 +17,10 @@ import {
   searchSubjects,
   setCollection,
   patchCollection,
+  deleteCollection,
   getCalendar,
+  getEpisodes,
+  type CollectionPatch,
 } from "@/lib/bgm";
 import { getTrendingSubjects, deriveCalendarTrending } from "@/lib/trending";
 import { SubjectType } from "@/types/bgm";
@@ -98,14 +102,24 @@ export function useUserCollection(
   });
 }
 
-/** 搜索（一次性，仅去重，不过度缓存）。 */
+/**
+ * 搜索（翻页）。subjectType 入 cache key，切换类型自动重搜。
+ * useInfiniteQuery：pageParam 为 offset，每页 limit 20。
+ */
 export function useSearchSubjects(
   keyword: string,
+  subjectType: SubjectType | undefined,
   enabled: boolean,
 ) {
-  return useQuery<SearchResponse>({
-    queryKey: ["search", keyword],
-    queryFn: () => searchSubjects(keyword),
+  return useInfiniteQuery<SearchResponse>({
+    queryKey: ["search", keyword, subjectType],
+    queryFn: ({ pageParam }) =>
+      searchSubjects(keyword, subjectType, 20, pageParam as number),
+    initialPageParam: 0,
+    getNextPageParam: (last) =>
+      last.offset + last.data.length < last.total
+        ? last.offset + last.data.length
+        : undefined,
     staleTime: 0,
     enabled: enabled && !!keyword.trim(),
   });
@@ -175,14 +189,35 @@ export function useSetCollection() {
   });
 }
 
-/** 修改收藏夹。成功后失效收藏缓存。 */
+/** 修改收藏（收藏夹/进度/评分）。成功后失效收藏缓存。 */
 export function usePatchCollection() {
   const invalidate = useInvalidateCollections();
   return useMutation({
-    mutationFn: ({ subjectId, type }: { subjectId: number; type: number }) =>
-      patchCollection(subjectId, type),
+    mutationFn: ({
+      subjectId,
+      ...patch
+    }: { subjectId: number } & CollectionPatch) =>
+      patchCollection(subjectId, patch),
     onSuccess: invalidate,
   });
+}
+
+/** 取消收藏。成功后失效收藏缓存。 */
+export function useDeleteCollection() {
+  const invalidate = useInvalidateCollections();
+  return useMutation({
+    mutationFn: (subjectId: number) => deleteCollection(subjectId),
+    onSuccess: invalidate,
+  });
+}
+
+/** 条目主篇剧集列表（动画类改进度用，按需 fetchQuery）。 */
+export function episodesQueryOptions(subjectId: number) {
+  return {
+    queryKey: ["episodes", subjectId] as const,
+    queryFn: () => getEpisodes(subjectId),
+    staleTime: STALE.subjectDetail,
+  };
 }
 
 /** 每日放送日历（公开接口，无需登录）。 */

@@ -1,7 +1,9 @@
 import { useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Check, ChevronDown, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { SearchInput } from "@/components/SearchInput";
+import { ProgressEdit } from "@/components/ProgressEdit";
 import {
   Collapsible,
   CollapsibleContent,
@@ -27,6 +29,7 @@ import {
 } from "@/types/bgm";
 import type { UserCollection } from "@/types/bgm";
 import { cn, smoothScrollTo } from "@/lib/utils";
+import { type WatchSortKey } from "@/App";
 
 /* ---- 追番列表展示组件（纯展示，与 WatchlistToolbar 分开） ---- */
 
@@ -54,20 +57,40 @@ function Watchlist({
 
   function handleMove(item: UserCollection, type: CollectionType) {
     if (type === item.type || patchMut.isPending) return;
-    patchMut.mutate({ subjectId: item.subject_id, type });
+    patchMut.mutate(
+      { subjectId: item.subject_id, type },
+      {
+        onSuccess: () =>
+          toast.success(
+            `已移入「${COLLECTION_LABELS[type]}」`,
+          ),
+        onError: (e) =>
+          toast.error("移动失败", {
+            description: e instanceof Error ? e.message : String(e),
+          }),
+      },
+    );
+  }
+
+  /** 列表态行内进度（与评分/话数等元信息同一行）：看到第 N 话 + 我的评分 */
+  function ProgressInfo({ item }: { item: UserCollection }) {
+    const eps = item.subject.eps ?? 0;
+    if (item.ep_status <= 0 && item.rate <= 0) return null;
+    return (
+      <>
+        {item.ep_status > 0 && (
+          <span>
+            看到 {item.ep_status}
+            {eps > 0 ? ` / ${eps}` : ""} 话
+          </span>
+        )}
+        {item.rate > 0 && <span>我评 {item.rate} 分</span>}
+      </>
+    );
   }
 
   return (
     <div className="space-y-2">
-      {patchMut.error && (
-        <p className="text-sm text-destructive">
-          移动失败：
-          {patchMut.error instanceof Error
-            ? patchMut.error.message
-            : String(patchMut.error)}
-        </p>
-      )}
-
       <div className="space-y-2">
         {COLLECTION_ORDER.map((type) => {
           const items = groups[type] ?? [];
@@ -107,8 +130,9 @@ function Watchlist({
                       <SubjectRow
                         key={c.subject_id}
                         subject={c.subject}
+                        extraInfo={<ProgressInfo item={c} />}
                         expandedAction={
-                          <div className="flex items-center gap-2">
+                          <>
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button
@@ -149,7 +173,16 @@ function Watchlist({
                               </DropdownMenuContent>
                             </DropdownMenu>
                             <BangumiLink subjectId={c.subject_id} />
-                          </div>
+                            <div className="w-full">
+                              <ProgressEdit
+                                subjectId={c.subject_id}
+                                subjectType={c.subject.type}
+                                epStatus={c.ep_status}
+                                rate={c.rate}
+                                totalEps={c.subject.eps ?? 0}
+                              />
+                            </div>
+                          </>
                         }
                       />
                     ))}
@@ -179,6 +212,8 @@ interface WatchlistPageProps {
   subjectCounts: Record<number, number>;
   subjectType: SubjectType | undefined;
   onSubjectTypeChange: (t: SubjectType | undefined) => void;
+  sortKey: WatchSortKey;
+  onSortChange: (k: WatchSortKey) => void;
 }
 
 export function WatchlistPage({
@@ -193,6 +228,8 @@ export function WatchlistPage({
   subjectCounts,
   subjectType,
   onSubjectTypeChange,
+  sortKey,
+  onSortChange,
 }: WatchlistPageProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
@@ -259,6 +296,8 @@ export function WatchlistPage({
             subjectCounts={subjectCounts}
             subjectType={subjectType}
             onSubjectTypeChange={onSubjectTypeChange}
+            sortKey={sortKey}
+            onSortChange={onSortChange}
             onRefresh={refresh}
             onJumpTo={jumpTo}
             onJumpToTop={jumpToTop}

@@ -1,12 +1,21 @@
 import { useState } from "react";
-import { Flame, Loader2 } from "lucide-react";
+import { Check, ChevronDown, Filter, Flame, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { SubjectRow } from "@/components/SubjectRow";
 import { BangumiLink } from "@/components/BangumiLink";
 import { CollectAction } from "@/components/CollectAction";
 import { useSearchSubjects, useTrendingFeed } from "@/lib/queries";
+import { SUBJECT_LABELS, SUBJECT_TYPES, SubjectType } from "@/types/bgm";
+import { cn } from "@/lib/utils";
 import { useAuthUser } from "@/hooks/useAuthUser";
 
 /** 收藏页空态：热度榜。优先 p1 新增热度，接口失败自动兜底本周追番热度。 */
@@ -67,12 +76,18 @@ export function Collection() {
   const { user } = useAuthUser();
   const [keyword, setKeyword] = useState("");
   const [submitted, setSubmitted] = useState<string | null>(null);
+  // 条目类型过滤，默认动画
+  const [subjectType, setSubjectType] = useState<SubjectType | undefined>(
+    SubjectType.Anime,
+  );
 
-  const { data, isFetching, error } = useSearchSubjects(submitted ?? "", !!submitted);
-  const results = data?.data ?? [];
+  const { data, isFetching, error, fetchNextPage, hasNextPage, isFetchingNextPage } =
+    useSearchSubjects(submitted ?? "", subjectType, !!submitted);
+  const results = data?.pages.flatMap((p) => p.data) ?? [];
+  const total = data?.pages[0]?.total ?? 0;
 
   return (
-    <PageLayout title="收藏">
+    <PageLayout title="找番">
       <div className="space-y-4">
         {!user && (
           <p className="text-sm text-muted-foreground">
@@ -90,9 +105,41 @@ export function Collection() {
           <Input
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
-            placeholder="输入漫画或动画名称"
+            placeholder="输入条目名称搜索"
             className="flex-1"
           />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" type="button" className="gap-1">
+                <Filter className="size-3.5" />
+                {subjectType ? SUBJECT_LABELS[subjectType] : "全部"}
+                <ChevronDown className="size-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setSubjectType(undefined)}>
+                <Check
+                  className={cn(
+                    "size-3.5",
+                    subjectType === undefined ? "opacity-100" : "opacity-0",
+                  )}
+                />
+                全部
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {SUBJECT_TYPES.map((t) => (
+                <DropdownMenuItem key={t} onClick={() => setSubjectType(t)}>
+                  <Check
+                    className={cn(
+                      "size-3.5",
+                      subjectType === t ? "opacity-100" : "opacity-0",
+                    )}
+                  />
+                  {SUBJECT_LABELS[t]}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button type="submit" disabled={isFetching || !keyword.trim()}>
             {isFetching ? (
               <Loader2 className="size-4 animate-spin" />
@@ -112,6 +159,11 @@ export function Collection() {
                 {error instanceof Error ? error.message : "搜索失败"}
               </p>
             )}
+            {total > 0 && (
+              <p className="text-xs text-muted-foreground">
+                已加载 {results.length} / 共 {total} 条
+              </p>
+            )}
             <div className="space-y-1">
               {results.map((s) => (
                 <SubjectRow
@@ -126,6 +178,24 @@ export function Collection() {
                 />
               ))}
             </div>
+            {hasNextPage && (
+              <div className="flex justify-center pt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={isFetchingNextPage}
+                  onClick={() => fetchNextPage()}
+                >
+                  {isFetchingNextPage ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" /> 加载中...
+                    </>
+                  ) : (
+                    "加载更多"
+                  )}
+                </Button>
+              </div>
+            )}
           </>
         ) : (
           <TrendingList />

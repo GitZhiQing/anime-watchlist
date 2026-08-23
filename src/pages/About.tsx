@@ -3,8 +3,8 @@ import { PageLayout } from "@/components/layout/PageLayout";
 import { Separator } from "@/components/ui/separator";
 
 const LINKS = [
-  { label: "Bangumi 官网", href: "https://bgm.tv" },
   { label: "项目仓库", href: "https://github.com/GitZhiQing/anime-watchlist" },
+  { label: "Bangumi 官网", href: "https://bgm.tv" },
 ];
 
 export function About() {

@@ -10,6 +10,7 @@ import { Collection } from "@/pages/Collection";
 import { About } from "@/pages/About";
 import { Calendar } from "@/pages/Calendar";
 import { useAuthUser } from "@/hooks/useAuthUser";
+import { usePersistentState } from "@/hooks/usePersistentState";
 import {
   COLLECTION_ORDER,
   SUBJECT_TYPES,
@@ -21,6 +22,16 @@ import { cn } from "@/lib/utils";
 
 export type PageKey = "watchlist" | "collection" | "config" | "about" | "calendar";
 
+/** 追番列表排序方式 */
+export type WatchSortKey = "default" | "score" | "name" | "updated";
+
+export const WATCH_SORT_LABELS: Record<WatchSortKey, string> = {
+  default: "默认",
+  score: "评分",
+  name: "名称",
+  updated: "最近更新",
+};
+
 const NAV: {
   key: PageKey;
   label: string;
@@ -29,7 +40,7 @@ const NAV: {
 }[] = [
   { key: "watchlist", label: "追番", title: "追番", icon: BookHeart },
   { key: "calendar", label: "新番", title: "新番", icon: CalendarDays },
-  { key: "collection", label: "收藏", title: "收藏", icon: Search },
+  { key: "collection", label: "找番", title: "找番", icon: Search },
   { key: "config", label: "配置", title: "配置", icon: Settings },
   { key: "about", label: "关于", title: "关于", icon: Info },
 ];
@@ -68,8 +79,12 @@ export default function App() {
     return map;
   }, [queries]);
 
-  const [subjectType, setSubjectType] = useState<SubjectType | undefined>(
-    undefined,
+  const [subjectType, setSubjectType] = usePersistentState<
+    SubjectType | undefined
+  >("prefs.watchlist.subjectType", undefined);
+  const [sortKey, setSortKey] = usePersistentState<WatchSortKey>(
+    "prefs.watchlist.sortKey",
+    "default",
   );
 
   /**
@@ -85,8 +100,28 @@ export default function App() {
     const items = subjectType
       ? bySubjectType[subjectType] ?? []
       : SUBJECT_TYPES.flatMap((t) => bySubjectType[t] ?? []);
-    return groupByType(items);
-  }, [bySubjectType, subjectType]);
+    const grouped = groupByType(items);
+    if (sortKey !== "default") {
+      for (const t of Object.keys(grouped)) {
+        grouped[Number(t)].sort((a, b) => {
+          switch (sortKey) {
+            case "score":
+              return (b.subject.score ?? 0) - (a.subject.score ?? 0);
+            case "name":
+              return (a.subject.name_cn || a.subject.name).localeCompare(
+                b.subject.name_cn || b.subject.name,
+                "zh-Hans-CN",
+              );
+            case "updated":
+              return (
+                new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+              );
+          }
+        });
+      }
+    }
+    return grouped;
+  }, [bySubjectType, subjectType, sortKey]);
 
   const subjectCounts = useMemo(() => {
     const c: Record<number, number> = {};
@@ -105,7 +140,8 @@ export default function App() {
     return c;
   }, [groups]);
 
-  const [openMap, setOpenMap] = useState<Record<number, boolean>>(() =>
+  const [openMap, setOpenMap] = usePersistentState<Record<number, boolean>>(
+    "prefs.watchlist.openMap",
     Object.fromEntries(COLLECTION_ORDER.map((t) => [t, true])),
   );
 
@@ -172,6 +208,8 @@ export default function App() {
               subjectCounts={subjectCounts}
               subjectType={subjectType}
               onSubjectTypeChange={setSubjectType}
+              sortKey={sortKey}
+              onSortChange={setSortKey}
             />
           )}
         </main>

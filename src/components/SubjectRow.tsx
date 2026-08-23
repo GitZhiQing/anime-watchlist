@@ -29,12 +29,18 @@ interface SubjectRowProps {
 
 const MAX_TAGS = 10;
 
-/** 列表态元信息行：评分 / 话数 / 放送时间。值为 0/空则隐藏对应项。 */
-function MetaRow({ subject }: { subject: SlimSubject }) {
+/** 列表态元信息行：评分 / 话数 / 放送时间 + 页面附加信息（同一行内联展示）。 */
+function MetaRow({
+  subject,
+  extra,
+}: {
+  subject: SlimSubject;
+  extra?: React.ReactNode;
+}) {
   const score = !!(subject.score && subject.score > 0);
   const eps = !!(subject.eps && subject.eps > 0);
   const hasDate = !!subject.date;
-  if (!score && !eps && !hasDate) return null;
+  if (!score && !eps && !hasDate && !extra) return null;
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
@@ -46,6 +52,7 @@ function MetaRow({ subject }: { subject: SlimSubject }) {
       )}
       {eps && <span>{subject.eps} 话</span>}
       {hasDate && <span>{subject.date}</span>}
+      {extra}
     </div>
   );
 }
@@ -133,8 +140,7 @@ export function SubjectRow({
                 {subject.short_summary}
               </p>
             )}
-            <MetaRow subject={subject} />
-            {extraInfo}
+            <MetaRow subject={subject} extra={extraInfo} />
             {tags.length > 0 && (
               <div className="flex flex-wrap gap-1 pt-0.5">
                 {tags.map((t) => (
@@ -167,7 +173,7 @@ export function SubjectRow({
       <CollapsibleContent>
         <div className="border-t border-border px-4 pb-4 pt-2">
           {expandedAction && (
-            <div className="flex items-center border-b border-border pb-2">
+            <div className="flex flex-wrap items-center gap-2 border-b border-border pb-2">
               {expandedAction}
             </div>
           )}

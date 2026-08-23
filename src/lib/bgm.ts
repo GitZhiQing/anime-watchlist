@@ -5,6 +5,7 @@ import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { emit } from "@tauri-apps/api/event";
 import { StoreKeys, clearAuth, getStore, setStore } from "@/lib/store";
 import { getProxy } from "@/lib/proxy";
+import { SubjectType, SUBJECT_TYPES } from "@/types/bgm";
 import type {
   BgmUser,
   CalendarDay,
@@ -224,6 +225,7 @@ export async function bgmRequest<T>(
 
 export function searchSubjects(
   keyword: string,
+  subjectType?: SubjectType,
   limit = 20,
   offset = 0,
 ): Promise<SearchResponse> {
@@ -233,7 +235,8 @@ export function searchSubjects(
     body: {
       keyword,
       sort: "match",
-      filter: { type: [1, 2] }, // 书籍(漫画) + 动画
+      // subjectType 省略（全部）→ 5 种类型；否则单类型精确搜索
+      filter: { type: subjectType ? [subjectType] : SUBJECT_TYPES },
     },
   });
 }
@@ -352,13 +355,87 @@ export function setCollection(
   });
 }
 
-/** 修改收藏夹（仅改 type，安全）。默认私密。 */
+/** 收藏可修改字段（PATCH body 子集）。服务端要求改非 type 字段时也要带 private。 */
+export interface CollectionPatch {
+  type?: number;
+  ep_status?: number;
+  vol_status?: number;
+  rate?: number;
+  comment?: string;
+  private?: boolean;
+}
+
+/** 修改收藏（改收藏夹/进度/评分等）。默认私密。 */
 export function patchCollection(
   subjectId: number,
-  type: number,
+  patch: CollectionPatch,
 ): Promise<void> {
   return bgmRequest<void>(`/v0/users/-/collections/${subjectId}`, {
     method: "PATCH",
-    body: { type, private: true },
+    body: { ...patch, private: true },
+  });
+}
+
+/** 取消收藏（DELETE）。 */
+export function deleteCollection(subjectId: number): Promise<void> {
+  return bgmRequest<void>(`/v0/users/-/collections/${subjectId}`, {
+    method: "DELETE",
+  });
+}
+
+/** 剧集（主篇 type=0）。id 为全局剧集 id，ep 为条目内序号。 */
+export interface Episode {
+  id: number;
+  type: number;
+  ep: number;
+  name: string;
+  name_cn: string;
+  /** 首播日期，如 2026-07-21 */
+  airdate?: string;
+  /** 时长，如 00:23:40 */
+  duration?: string;
+  /** 单集简介 */
+  desc?: string;
+}
+
+interface PagedEpisodes {
+  data: Episode[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+/** 拉取条目全部主篇剧集（/v0/episodes，自动翻页）。 */
+export async function getEpisodes(subjectId: number): Promise<Episode[]> {
+  const first = await bgmRequest<PagedEpisodes>("/v0/episodes", {
+    query: { subject_id: subjectId, type: 0, limit: 100, offset: 0 },
+  });
+  const pages = Math.ceil(first.total / (first.limit || 100));
+  if (pages <= 1) return first.data;
+  const rest = await mapWithConcurrency(
+    Array.from({ length: pages - 1 }, (_, i) => (i + 1) * (first.limit || 100)),
+    (offset) =>
+      bgmRequest<PagedEpisodes>("/v0/episodes", {
+        query: { subject_id: subjectId, type: 0, limit: 100, offset },
+      }),
+    PAGE_CONCURRENCY,
+  );
+  return [...first.data, ...rest.flatMap((p) => p.data)];
+}
+
+/**
+ * 标记某话的收藏状态：type 2=看过、0=未收藏。
+ * 单集接口为 PUT /v0/users/-/collections/-/episodes/{episode_id}（注意路径中
+ * 没有 subject_id），走 PUT+type 而非 POST/DELETE。
+ */
+export function setEpisodeWatched(
+  subjectId: number,
+  episodeId: number,
+  watched: boolean,
+): Promise<void> {
+  void subjectId; // 单集接口按 episode_id 定位，无需 subject_id
+  return bgmRequest<void>(`/v0/users/-/collections/-/episodes/${episodeId}`, {
+    method: "PUT",
+    body: { type: watched ? 2 : 0 },
   });
 }

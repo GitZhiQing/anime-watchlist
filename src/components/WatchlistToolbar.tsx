@@ -1,4 +1,5 @@
 import {
+  ArrowDownWideNarrow,
   ArrowUpToLine,
   Check,
   ChevronDown,
@@ -22,6 +23,7 @@ import {
   SUBJECT_TYPES,
   SubjectType,
 } from "@/types/bgm";
+import { WATCH_SORT_LABELS, type WatchSortKey } from "@/App";
 import { cn } from "@/lib/utils";
 
 interface WatchlistToolbarProps {
@@ -34,12 +36,15 @@ interface WatchlistToolbarProps {
   /** 当前选中的条目类型筛选（undefined = 全部） */
   subjectType: SubjectType | undefined;
   onSubjectTypeChange: (type: SubjectType | undefined) => void;
+  /** 列表排序方式 */
+  sortKey: WatchSortKey;
+  onSortChange: (key: WatchSortKey) => void;
   onRefresh: () => void;
   onJumpTo: (type: CollectionType) => void;
   onJumpToTop: () => void;
 }
 
-/** 追番页标题栏工具：类型筛选 + 跳转下拉 + 刷新。 */
+/** 追番页标题栏工具：类型筛选 + 排序 + 跳转下拉 + 刷新。 */
 export function WatchlistToolbar({
   loading,
   totalCount,
@@ -47,6 +52,8 @@ export function WatchlistToolbar({
   subjectCounts,
   subjectType,
   onSubjectTypeChange,
+  sortKey,
+  onSortChange,
   onRefresh,
   onJumpTo,
   onJumpToTop,
@@ -89,6 +96,29 @@ export function WatchlistToolbar({
               <span className="ml-auto text-muted-foreground">
                 {subjectCounts[t] ?? 0}
               </span>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm" className="gap-1">
+            <ArrowDownWideNarrow className="size-3.5" />
+            {WATCH_SORT_LABELS[sortKey]}
+            <ChevronDown className="size-3.5" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {(Object.keys(WATCH_SORT_LABELS) as WatchSortKey[]).map((k) => (
+            <DropdownMenuItem key={k} onClick={() => onSortChange(k)}>
+              <Check
+                className={cn(
+                  "size-3.5",
+                  sortKey === k ? "opacity-100" : "opacity-0",
+                )}
+              />
+              {WATCH_SORT_LABELS[k]}
             </DropdownMenuItem>
           ))}
         </DropdownMenuContent>

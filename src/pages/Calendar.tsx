@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, Loader2, Minus, Plus, RefreshCw } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { CollectAction } from "@/components/CollectAction";
 import { CalendarTable } from "@/components/CalendarTable";
 import { SearchInput } from "@/components/SearchInput";
 import { useCalendar } from "@/lib/queries";
+import { usePersistentState } from "@/hooks/usePersistentState";
 import { cn } from "@/lib/utils";
 import type { CalendarDay, CalendarSubject, SlimSubject } from "@/types/bgm";
 
@@ -85,11 +86,25 @@ function filterCalendarData(
 
 export function Calendar() {
   const { data, isLoading, error, refetch, isFetching } = useCalendar();
-  const [viewMode, setViewMode] = useState<ViewMode>("table");
-  const [density, setDensity] = useState<DensityMode>("full");
-  const [threshold, setThreshold] = useState(100);
+  const [viewMode, setViewMode] = usePersistentState<ViewMode>(
+    "prefs.calendar.viewMode",
+    "table",
+  );
+  const [density, setDensity] = usePersistentState<DensityMode>(
+    "prefs.calendar.density",
+    "full",
+  );
+  const [threshold, setThreshold] = usePersistentState<number>(
+    "prefs.calendar.threshold",
+    100,
+  );
   const [thresholdInput, setThresholdInput] = useState("100");
   const [keyword, setKeyword] = useState("");
+
+  /* 持久化阈值异步载入后同步输入框 */
+  useEffect(() => {
+    setThresholdInput(String(threshold));
+  }, [threshold]);
 
   /* 过滤后的数据 */
   const filteredData = useMemo(
