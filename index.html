@@ -3,12 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/logo.png" />
     <title>追番计划</title>
     <script>
+      // 主题防闪烁：支持 light/dark/system 三态，默认跟随系统
       (function () {
-        var t = localStorage.getItem("theme");
-        if (t === "light") document.documentElement.classList.remove("dark");
-        else document.documentElement.classList.add("dark");
+        var t = localStorage.getItem("theme") || "system";
+        var dark =
+          t === "dark" ||
+          (t !== "light" &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.classList.toggle("dark", dark);
       })();
     </script>
   </head>

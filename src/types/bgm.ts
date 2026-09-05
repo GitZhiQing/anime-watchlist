@@ -1,5 +1,5 @@
 // Bangumi 数据类型，依据官方 v0 OpenAPI 规范（https://github.com/bangumi/api/blob/master/open-api/v0.yaml）
-// 与 TMP.json 样例定义。接口说明见 docs/api/v0.md。
+// 与 TMP.json 样例定义。接口说明见 docs/API.md。
 
 /** 条目类型 SubjectType。本应用只用 Book(1)=漫画 / Anime(2)=动画 */
 export enum SubjectType {
@@ -97,13 +97,21 @@ export interface SlimSubject {
   score?: number;
   rank?: number;
   tags: Tag[];
+  nsfw?: boolean;
 }
 
 export interface Rating {
   rank: number;
   total: number;
   score: number;
+  /** 1~10 分各档评分人数，键为 "1".."10" */
   count: Record<string, number>;
+}
+
+/** v0 条目 infobox 单项；values 元素可能是 {v:string} 或纯字符串 */
+export interface InfoboxItem {
+  key: string;
+  values: Array<{ v: string } | string>;
 }
 
 export interface CollectionStat {
@@ -121,7 +129,7 @@ export interface CollectionStat {
 export interface Subject extends SlimSubject {
   summary: string;
   platform?: string;
-  infobox?: unknown;
+  infobox?: InfoboxItem[];
   total_episodes?: number;
   rating?: Rating;
   collection?: CollectionStat;
@@ -270,4 +278,48 @@ export interface TrendingItem {
   subject: SlimSubject;
   heat: number;
   source: "trends" | "calendar";
+}
+
+// ===== p1 条目扩展信息（角色/关联/推荐） =====
+// 私有接口、无官方文档：类型保持宽松，渲染端对字段缺失容错，请求失败静默降级。
+
+/** /p1/subjects/{id}/characters 单条：角色 + CV 列表 */
+export interface P1Character {
+  id: number;
+  name: string;
+  nicename?: string;
+  type?: number;
+  images?: SubjectImages;
+  subjectID?: number;
+  /** 角色在剧集中的署名（如「主人公」） */
+  characterName?: string;
+  cast: Array<{
+    id: number;
+    name: string;
+    type?: number;
+    images?: SubjectImages | null;
+    lang?: string;
+    subjectID?: number;
+    characterID?: number;
+  }>;
+}
+
+/** /p1/subjects/{id}/relations 单条 */
+export interface P1Relation {
+  id: number;
+  name: string;
+  nameCN: string;
+  type: number;
+  images?: SubjectImages;
+  relation: string;
+}
+
+/** /p1/subjects/{id}/recs 单条推荐 */
+export interface P1RecItem {
+  name: string;
+  nameCN?: string;
+  score?: number;
+  rank?: number;
+  images?: SubjectImages;
+  scoreCount?: number;
 }

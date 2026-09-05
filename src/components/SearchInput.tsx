@@ -28,6 +28,8 @@ export function SearchInput({
         aria-label={placeholder}
         autoComplete="off"
         spellCheck={false}
+        /** 全局 "/" 快捷键据此定位当前页搜索框 */
+        data-search-input
         className="h-8 pl-8 pr-8 text-sm"
       />
       {value && (

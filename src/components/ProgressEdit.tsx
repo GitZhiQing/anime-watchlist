@@ -6,29 +6,89 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { usePatchCollection, episodesQueryOptions } from "@/lib/queries";
+import {
+  usePatchCollection,
+  episodesQueryOptions,
+  patchCachedCollections,
+} from "@/lib/queries";
 import { setEpisodeWatched, type Episode } from "@/lib/bgm";
+import { useAuthUser } from "@/hooks/useAuthUser";
 import { SubjectType } from "@/types/bgm";
 import { cn } from "@/lib/utils";
 
-interface ProgressEditProps {
+/**
+ * 「我的」折叠区内的评分与进度编辑，拆为两个独立组件：
+ * - RateStars：我的评分（1~10 星，点击已评分值清除）
+ * - ProgressRows：我的进度（话数逐集标记/步进 + 书籍卷数），含剧集懒加载与乐观更新
+ */
+
+interface RateStarsProps {
   subjectId: number;
-  /** 条目类型：书籍走 PATCH ep_status，其余走剧集标记接口 */
-  subjectType: number;
-  /** 当前看到的话数 */
-  epStatus: number;
   /** 当前评分（0 = 未评） */
   rate: number;
-  /** 总话数（未知则 0） */
-  totalEps: number;
 }
 
-/**
- * 收藏进度与评分编辑（追番页展开后）。
- * - 进度：± 步进 + 直接输入，失焦/回车提交；上限为总话数（未知则不设上限）
- *   书籍：PATCH ep_status；动画等：标记/取消标记对应剧集（Bangumi 限制）
- * - 评分：1~10 星，点击已评分值可清除
- */
+/** 我的评分：1~10 星。点击已评分值可清除；乐观更新缓存，失败回滚。 */
+export function RateStars({ subjectId, rate }: RateStarsProps) {
+  const { user } = useAuthUser();
+  const username = user?.username;
+  const mut = usePatchCollection();
+  // 乐观覆盖值：null 表示跟随 props
+  const [optRate, setOptRate] = useState<number | null>(null);
+  const shownRate = optRate ?? rate;
+
+  useEffect(() => {
+    if (optRate !== null && rate === optRate) setOptRate(null);
+  }, [rate, optRate]);
+
+  function setRate(value: number) {
+    const next = shownRate === value ? 0 : value; // 再点同一颗星清除评分
+    setOptRate(next); // 先改 UI，结果以 toast 通知
+    mut.mutate(
+      { subjectId, username, rate: next },
+      {
+        onSuccess: () =>
+          next > 0
+            ? toast.success(`评分已保存：${next} 分`)
+            : toast.success("已清除评分"),
+        onError: (e) => {
+          setOptRate(null); // 回滚
+          toast.error("评分失败", {
+            description: e instanceof Error ? e.message : String(e),
+          });
+        },
+      },
+    );
+  }
+
+  const pending = mut.isPending && mut.variables?.subjectId === subjectId;
+
+  return (
+    <div className="flex items-center" title="点击评分（1~10），再点同一颗星清除">
+      {pending && <Loader2 className="mr-1 size-3 animate-spin" />}
+      {Array.from({ length: 10 }, (_, i) => i + 1).map((v) => (
+        <button
+          key={v}
+          type="button"
+          disabled={pending}
+          onClick={() => setRate(v)}
+          className="p-0.5 disabled:opacity-50"
+          aria-label={`${v} 分`}
+        >
+          <Star
+            className={cn(
+              "size-4 transition-colors",
+              v <= shownRate
+                ? "fill-current text-amber-500"
+                : "text-muted-foreground/50 hover:text-amber-400",
+            )}
+          />
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /**
  * 首个未放送的话数（之后的集数一律视为未更新，不再逐集判断——
  * 放送是按序进行的，中间不会跳回）。剧集信息缺失时返回 max+1（全部视为已出）。
@@ -44,7 +104,7 @@ function firstUnairedEp(episodes: Map<number, Episode> | undefined, max: number)
   return max + 1;
 }
 
-/** 进度：可点击话数按钮（1..totalEps）。已看实心、已播出未看描边、未播出弱化 */
+/** 进度：可点击话数按钮（1..totalEps）。已看外边框、已播出未看普通文本、未播出浅色字 */
 function EpisodePicker({
   max,
   current,
@@ -81,7 +141,7 @@ function EpisodePicker({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-0.5">
+    <div className="flex max-w-[310px] flex-wrap items-center gap-0.5">
       {(() => {
         const firstUnaired = firstUnairedEp(episodes, max);
         return Array.from({ length: max }, (_, i) => i + 1).map((n) => {
@@ -97,10 +157,10 @@ function EpisodePicker({
                 className={cn(
                   "flex h-6 min-w-6 items-center justify-center rounded border px-1 text-xs tabular-nums transition-colors disabled:opacity-50",
                   watched
-                    ? "border-primary bg-primary font-medium text-primary-foreground"
+                    ? "border-primary font-medium text-primary" // 已看：外边框
                     : aired
-                      ? "border-primary/60 bg-primary/10 text-primary"
-                      : "border-transparent text-muted-foreground/60 hover:border-border hover:bg-muted",
+                      ? "border-transparent text-foreground hover:bg-muted" // 已播出未看：普通文本
+                      : "border-transparent text-muted-foreground/50 hover:bg-muted", // 未播出：浅色字
                 )}
               >
                 {n}
@@ -115,20 +175,30 @@ function EpisodePicker({
   );
 }
 
-/** 进度：总话数未知时的兜底，± 步进 + 直接输入 */
-function EpisodeStepper({
-  epText,
+/** 通用 −/输入/+ 步进器：书籍的话数与卷数共用同一形态 */
+function NumberStepper({
+  value,
   busy,
-  onStep,
-  onTextChange,
+  max,
   onCommit,
+  ariaLabel,
+  decTitle,
+  incTitle,
 }: {
-  epText: string;
+  value: number;
   busy: boolean;
-  onStep: (delta: number) => void;
-  onTextChange: (v: string) => void;
-  onCommit: (value: string) => void;
+  /** 上限（未知则不限制） */
+  max?: number;
+  onCommit: (value: number) => void;
+  ariaLabel: string;
+  decTitle: string;
+  incTitle: string;
 }) {
+  const [text, setText] = useState(String(value));
+  useEffect(() => {
+    setText(String(value));
+  }, [value]);
+
   return (
     <ButtonGroup>
       <Button
@@ -136,22 +206,27 @@ function EpisodeStepper({
         size="icon-sm"
         className="size-6 p-0"
         disabled={busy}
-        onClick={() => onStep(-1)}
-        title="减 1 话"
+        onClick={() => onCommit(value - 1)}
+        title={decTitle}
       >
         <Minus className="size-3" />
       </Button>
       <Input
         type="number"
         min={0}
-        value={epText}
-        onChange={(e) => onTextChange(e.target.value)}
-        onBlur={(e) => onCommit(e.target.value)}
+        max={max}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={(e) => {
+          const n = Number(e.target.value);
+          if (e.target.value !== "" && !isNaN(n)) onCommit(n);
+          else setText(String(value)); // 非法输入回显当前值
+        }}
         onKeyDown={(e) => {
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
         }}
         disabled={busy}
-        aria-label="看到第几话"
+        aria-label={ariaLabel}
         className="h-6 w-10 px-1 text-center text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
       />
       <Button
@@ -159,8 +234,8 @@ function EpisodeStepper({
         size="icon-sm"
         className="size-6 p-0"
         disabled={busy}
-        onClick={() => onStep(1)}
-        title="加 1 话"
+        onClick={() => onCommit(value + 1)}
+        title={incTitle}
       >
         <Plus className="size-3" />
       </Button>
@@ -168,54 +243,65 @@ function EpisodeStepper({
   );
 }
 
-export function ProgressEdit({
+interface ProgressRowsProps {
+  subjectId: number;
+  /** 条目类型：书籍走 PATCH ep_status，其余走剧集标记接口 */
+  subjectType: number;
+  /** 当前看到的话数 */
+  epStatus: number;
+  /** 总话数（未知则 0） */
+  totalEps: number;
+  /** 当前卷数进度（书籍类） */
+  volStatus?: number;
+  /** 总卷数（书籍类，为 0 时不显示卷） */
+  volumes?: number;
+}
+
+/** 我的进度：话数（逐集标记/步进）+ 书籍卷数。乐观更新缓存，失败回滚。 */
+export function ProgressRows({
   subjectId,
   subjectType,
   epStatus,
-  rate,
   totalEps,
-}: ProgressEditProps) {
+  volStatus = 0,
+  volumes = 0,
+}: ProgressRowsProps) {
   const qc = useQueryClient();
+  const { user } = useAuthUser();
+  const username = user?.username;
   const mut = usePatchCollection();
   const [epBusy, setEpBusy] = useState(false);
 
-  // 剧集信息（悬浮提示用）：动画类且已知总话数时展开即懒加载，与进度标记共用缓存
+  // 剧集信息（悬浮提示用）：动画类且已知总话数时懒加载，与进度标记共用缓存
   const { data: episodes } = useQuery({
     ...episodesQueryOptions(subjectId),
     enabled: subjectType !== SubjectType.Book && totalEps > 0,
   });
   const episodeByEp = episodes ? new Map(episodes.map((e) => [e.ep, e])) : undefined;
-  // 乐观更新覆盖值：提交前先改 UI，服务端结果回来（缓存失效后 props 追上）或
-  // 失败回滚时清除。null 表示跟随 props。
+
+  // 乐观覆盖值：null 表示跟随 props
   const [optEp, setOptEp] = useState<number | null>(null);
-  const [optRate, setOptRate] = useState<number | null>(null);
-
+  const [optVol, setOptVol] = useState<number | null>(null);
   const shownEp = optEp ?? epStatus;
-  const shownRate = optRate ?? rate;
+  const shownVol = optVol ?? volStatus;
 
-  // props 追上乐观值后解除覆盖（也顺带在失败回滚后同步输入框）
   useEffect(() => {
     if (optEp !== null && epStatus === optEp) setOptEp(null);
   }, [epStatus, optEp]);
   useEffect(() => {
-    if (optRate !== null && rate === optRate) setOptRate(null);
-  }, [rate, optRate]);
+    if (optVol !== null && volStatus === optVol) setOptVol(null);
+  }, [volStatus, optVol]);
 
-  const [epText, setEpText] = useState(String(shownEp));
-  useEffect(() => {
-    setEpText(String(shownEp));
-  }, [shownEp]);
-
-  // 各行独立的 busy：进度行只看进度请求，评分行只看评分请求
+  // 各行独立的 busy：进度行只看进度请求，卷行只看卷请求
   const epPending =
     epBusy ||
     (mut.isPending &&
       mut.variables?.subjectId === subjectId &&
       mut.variables?.ep_status !== undefined);
-  const ratePending =
+  const volPending =
     mut.isPending &&
     mut.variables?.subjectId === subjectId &&
-    mut.variables?.rate !== undefined;
+    mut.variables?.vol_status !== undefined;
 
   function clamp(value: number) {
     return Math.max(0, totalEps > 0 ? Math.min(value, totalEps) : value);
@@ -227,10 +313,10 @@ export function ProgressEdit({
     });
   }
 
-  /** 书籍：PATCH ep_status 一步到位 */
+  /** 书籍：PATCH ep_status 一步到位（mutation 内已乐观直写缓存） */
   function commitEpBook(target: number) {
     mut.mutate(
-      { subjectId, ep_status: target },
+      { subjectId, username, ep_status: target },
       {
         onSuccess: () => toast.success(`进度已更新：看到第 ${target} 话`),
         onError: (e) => {
@@ -241,7 +327,10 @@ export function ProgressEdit({
     );
   }
 
-  /** 非书籍：按话数范围逐集标记/取消标记，再失效收藏缓存 */
+  /**
+   * 非书籍：按话数范围逐集标记/取消标记。范围由当前值与目标值推导，天然去重。
+   * 完成后乐观直写收藏缓存的 ep_status，列表只置 stale 不全量重拉。
+   */
   async function commitEpByEpisodes(target: number) {
     setEpBusy(true);
     try {
@@ -259,8 +348,17 @@ export function ProgressEdit({
         if (id === undefined) continue; // 剧集列表缺失该话（SP 等）则跳过
         await setEpisodeWatched(subjectId, id, watched);
       }
-      await qc.invalidateQueries({ queryKey: ["collections"] });
-      await qc.invalidateQueries({ queryKey: ["collection"] });
+      if (username) {
+        patchCachedCollections(qc, username, subjectId, { ep_status: target });
+        qc.invalidateQueries({
+          queryKey: ["collection", username, subjectId],
+          refetchType: "none",
+        });
+        qc.invalidateQueries({
+          queryKey: ["collections", username],
+          refetchType: "none",
+        });
+      }
       toast.success(`进度已更新：看到第 ${target} 话`);
     } catch (e) {
       setOptEp(null); // 回滚
@@ -272,95 +370,83 @@ export function ProgressEdit({
 
   function commitEp(value: number) {
     const target = clamp(value);
-    if (target === shownEp) {
-      setEpText(String(target));
-      return;
-    }
+    if (target === shownEp) return;
     setOptEp(target); // 先改 UI，结果以 toast 通知
-    setEpText(String(target));
     if (subjectType === SubjectType.Book) commitEpBook(target);
     else void commitEpByEpisodes(target);
   }
 
-  function stepEp(delta: number) {
-    commitEp((Number(epText) || 0) + delta);
-  }
-
-  function setRate(value: number) {
-    const next = shownRate === value ? 0 : value; // 再点同一颗星清除评分
-    setOptRate(next); // 先改 UI，结果以 toast 通知
+  /** 书籍卷进度：PATCH vol_status（mutation 内已乐观直写缓存） */
+  function commitVol(value: number) {
+    const target = Math.max(0, volumes > 0 ? Math.min(value, volumes) : value);
+    if (target === shownVol || isNaN(target)) return;
+    setOptVol(target);
     mut.mutate(
-      { subjectId, rate: next },
+      { subjectId, username, vol_status: target },
       {
-        onSuccess: () =>
-          next > 0
-            ? toast.success(`评分已保存：${next} 分`)
-            : toast.success("已清除评分"),
+        onSuccess: () => toast.success(`卷进度已更新：${target} 卷`),
         onError: (e) => {
-          setOptRate(null); // 回滚
-          failToast("评分失败", e);
+          setOptVol(null); // 回滚
+          failToast("更新卷进度失败", e);
         },
       },
     );
   }
 
-  return (
-    <div className="space-y-1.5 text-xs text-muted-foreground">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="shrink-0">进度</span>
-        {epPending && <Loader2 className="size-3 animate-spin" />}
-        {totalEps > 0 ? (
-          <EpisodePicker
-            max={totalEps}
-            current={shownEp}
-            busy={epPending}
-            onPick={commitEp}
-            episodes={episodeByEp}
-          />
-        ) : (
-          <EpisodeStepper
-            epText={epText}
-            busy={epPending}
-            onStep={stepEp}
-            onTextChange={setEpText}
-            onCommit={(v) => {
-              const n = Number(v);
-              if (v !== "" && !isNaN(n)) commitEp(n);
-              else setEpText(String(shownEp));
-            }}
-          />
-        )}
-        <span>/ {totalEps > 0 ? totalEps : "?"} 话</span>
-      </div>
+  const isBook = subjectType === SubjectType.Book;
 
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="shrink-0">评分</span>
-        {ratePending && <Loader2 className="size-3 animate-spin" />}
-        <div
-          className="flex items-center"
-          title="点击评分（1~10），再点同一颗星清除"
-        >
-          {Array.from({ length: 10 }, (_, i) => i + 1).map((v) => (
-            <button
-              key={v}
-              type="button"
-              disabled={epPending || ratePending}
-              onClick={() => setRate(v)}
-              className="p-0.5 disabled:opacity-50"
-              aria-label={`${v} 分`}
-            >
-              <Star
-                className={cn(
-                  "size-4 transition-colors",
-                  v <= shownRate
-                    ? "fill-current text-amber-500"
-                    : "text-muted-foreground/50 hover:text-amber-400",
-                )}
-              />
-            </button>
-          ))}
-        </div>
-      </div>
+  /** 话数组：非书籍且总话数已知 → 逐集按钮；否则（含书籍）→ 与卷数同款步进器 */
+  const epGroup = (
+    <div className="flex flex-wrap items-center gap-2">
+      {epPending && <Loader2 className="size-3 animate-spin" />}
+      {!isBook && totalEps > 0 ? (
+        <EpisodePicker
+          max={totalEps}
+          current={shownEp}
+          busy={epPending}
+          onPick={commitEp}
+          episodes={episodeByEp}
+        />
+      ) : (
+        <NumberStepper
+          value={shownEp}
+          busy={epPending}
+          max={totalEps > 0 ? totalEps : undefined}
+          onCommit={commitEp}
+          ariaLabel="看到第几话"
+          decTitle="减 1 话"
+          incTitle="加 1 话"
+        />
+      )}
+      <span className="shrink-0">/ {totalEps > 0 ? totalEps : "?"} 话</span>
     </div>
+  );
+
+  /** 卷组：仅书籍且有卷数 */
+  const volGroup =
+    isBook && volumes > 0 ? (
+      <div className="flex flex-wrap items-center gap-2">
+        {volPending && <Loader2 className="size-3 animate-spin" />}
+        <NumberStepper
+          value={shownVol}
+          busy={volPending}
+          max={volumes > 0 ? volumes : undefined}
+          onCommit={commitVol}
+          ariaLabel="已读卷数"
+          decTitle="减 1 卷"
+          incTitle="加 1 卷"
+        />
+        <span>/ {volumes} 卷</span>
+      </div>
+    ) : null;
+
+  // 书籍：话数与卷数同一行；其余类型：话数独占一行
+  return volGroup ? (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+      {epGroup}
+      {volGroup}
+    </div>
+  ) : (
+    epGroup
   );
 }
