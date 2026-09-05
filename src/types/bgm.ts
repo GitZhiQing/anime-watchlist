@@ -316,6 +316,10 @@ export interface P1Relation {
 
 /** /p1/subjects/{id}/recs 单条推荐 */
 export interface P1RecItem {
+  /** 条目 id（嵌套 subject 形状下必有），点击在应用内打开详情弹窗 */
+  id?: number;
+  /** 条目类型（嵌套 subject 形状下存在），供应用内详情弹窗乐观插入归类 */
+  type?: number;
   name: string;
   nameCN?: string;
   score?: number;
