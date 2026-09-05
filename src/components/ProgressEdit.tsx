@@ -418,7 +418,6 @@ export function ProgressRows({
           incTitle="加 1 话"
         />
       )}
-      <span className="shrink-0">/ {totalEps > 0 ? totalEps : "?"} 话</span>
     </div>
   );
 
