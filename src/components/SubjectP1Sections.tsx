@@ -7,6 +7,13 @@ import {
   useSubjectRecs,
 } from "@/lib/queries";
 import { SubjectDetailDialog } from "@/components/SubjectDetailDialog";
+import { FadeImg } from "@/components/FadeImg";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { useInViewOnce } from "@/hooks/useInViewOnce";
 import { Skeleton } from "@/components/ui/skeleton";
 import type {
@@ -29,6 +36,10 @@ const MAX_CHARACTERS = 16;
 const MAX_RELATIONS = 12;
 const MAX_RECS = 8;
 
+/** p1 卡片网格：auto-fill 同时适配详情弹窗的宽滚动区与展开行的窄容器 */
+const CARD_GRID =
+  "grid grid-cols-[repeat(auto-fill,minmax(96px,1fr))] gap-x-2 gap-y-3";
+
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
     <div className="text-xs text-muted-foreground">{children}</div>
@@ -36,7 +47,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 }
 
 /** 区块加载中的骨架占位（保留空间：未滚到不请求，滚到后内容出现不跳版） */
-function SectionSkeleton({ variant }: { variant: "avatars" | "rows" }) {
+function SectionSkeleton({ variant }: { variant: "avatars" | "cards" }) {
   if (variant === "avatars") {
     return (
       <div className="flex gap-2 overflow-hidden pb-1">
@@ -53,9 +64,9 @@ function SectionSkeleton({ variant }: { variant: "avatars" | "rows" }) {
     );
   }
   return (
-    <div className="space-y-1.5">
-      {Array.from({ length: 3 }, (_, i) => (
-        <Skeleton key={i} className="h-9 w-full rounded-md" />
+    <div className={CARD_GRID}>
+      {Array.from({ length: 6 }, (_, i) => (
+        <Skeleton key={i} className="aspect-[5/7] w-full rounded-md" />
       ))}
     </div>
   );
@@ -69,7 +80,7 @@ function SectionBody({
   children,
 }: {
   title: string;
-  skeleton: "avatars" | "rows";
+  skeleton: "avatars" | "cards";
   hasData: boolean;
   children?: React.ReactNode;
 }) {
@@ -94,7 +105,7 @@ function p1SectionState(
   return { hasData, hidden: !isPending && !hasData };
 }
 
-/** p1 行点击 → 应用内详情弹窗（不外跳浏览器）。悬停 300ms 预取详情，与网格卡片一致。 */
+/** p1 卡片点击 → 应用内详情弹窗（不外跳浏览器）。悬停 300ms 预取详情，与网格卡片一致。 */
 function useP1SubjectDialog() {
   const [subject, setSubject] = useState<SlimSubject | null>(null);
   const prefetchSubject = usePrefetchSubject();
@@ -152,20 +163,39 @@ function CharactersSection({ data }: { data: P1Character[] }) {
     <div className="scrollbar-thin flex gap-2 overflow-x-auto pb-1">
       {list.map((ch) => {
         const cv = ch.cast?.[0];
+        const img = ch.images?.medium || ch.images?.large || ch.images?.small;
         return (
           <div
             key={ch.id}
             className="flex w-20 shrink-0 flex-col items-center gap-1 text-center"
             title={cv ? `${ch.name}\nCV：${cv.name}` : ch.name}
           >
-            {ch.images?.medium || ch.images?.large || ch.images?.small ? (
-              <img
-                src={ch.images?.medium || ch.images?.large || ch.images?.small}
-                alt={ch.name}
-                loading="lazy"
-                // 3:4 竖版固定框：竖长图裁顶部（保留脸部），横宽图垂直放满、水平居中
-                className="aspect-[3/4] w-16 rounded-md object-cover object-top"
-              />
+            {img ? (
+              <Dialog>
+                <DialogTrigger asChild>
+                  <button
+                    type="button"
+                    className="cursor-zoom-in"
+                    title="查看大图"
+                  >
+                    <img
+                      src={img}
+                      alt={ch.name}
+                      loading="lazy"
+                      // 3:4 竖版固定框：竖长图裁顶部（保留脸部），横宽图垂直放满、水平居中
+                      className="aspect-[3/4] w-16 rounded-md object-cover object-top transition-opacity hover:opacity-80"
+                    />
+                  </button>
+                </DialogTrigger>
+                <DialogContent showCloseButton={false} variant="image">
+                  <DialogTitle className="sr-only">{ch.name}</DialogTitle>
+                  <img
+                    src={ch.images?.large || img}
+                    alt={ch.name}
+                    className="max-h-[85vh] max-w-[90vw] rounded object-contain"
+                  />
+                </DialogContent>
+              </Dialog>
             ) : (
               <div className="aspect-[3/4] w-16 rounded-md bg-muted/60" />
             )}
@@ -184,7 +214,85 @@ function CharactersSection({ data }: { data: P1Character[] }) {
   );
 }
 
-/** 关联条目：关系标签 + 封面 + 名称，点击打开应用内详情弹窗 */
+/**
+ * p1 条目海报卡片（关联条目/相关推荐共用）：视觉对齐 SubjectGridCard
+ * （海报 + 底部标题浮层 + 右上角标），点击/悬停行为由区块共享的 nav 承接。
+ */
+function P1SubjectCard({
+  nav,
+  r,
+  badge,
+}: {
+  nav: P1SubjectNav;
+  r: {
+    id?: number;
+    type?: number;
+    name?: string;
+    nameCN?: string;
+    images?: SubjectImages;
+    score?: number;
+  };
+  /** 封面右上角文字角标（关联条目的关系文本），评分角标由 score 自动渲染 */
+  badge?: string;
+}) {
+  const title = r.nameCN || r.name || "";
+  // medium 起步：grid/small 是小缩略图，放大到卡片尺寸会糊
+  const img =
+    r.images?.medium ||
+    r.images?.large ||
+    r.images?.common ||
+    r.images?.small ||
+    r.images?.grid;
+  return (
+    <button
+      type="button"
+      onClick={() => nav.open(p1NavSubject(r))}
+      onMouseEnter={() => r.id && nav.schedulePrefetch(r.id)}
+      onMouseLeave={nav.cancelPrefetch}
+      className="group cursor-pointer text-left"
+      title={`查看详情：${title}`}
+    >
+      <div className="relative aspect-[5/7] w-full overflow-hidden rounded-md border border-border bg-muted/30 transition-colors group-hover:border-primary/40">
+        {img ? (
+          <FadeImg
+            src={img}
+            alt={title}
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
+          />
+        ) : (
+          <span className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground">
+            暂无封面
+          </span>
+        )}
+        {(badge || (!!r.score && r.score > 0)) && (
+          <div className="absolute top-1 right-1 flex max-w-[calc(100%-0.5rem)] items-start justify-end gap-1">
+            {badge && (
+              <span
+                className="min-w-0 truncate rounded bg-black/60 px-1 py-0.5 text-[10px] leading-none text-white"
+                title={badge}
+              >
+                {badge}
+              </span>
+            )}
+            {!!r.score && r.score > 0 && (
+              <span className="inline-flex shrink-0 items-center gap-0.5 rounded bg-black/60 px-1 py-0.5 text-[10px] leading-none text-amber-400">
+                <Star className="size-2.5 fill-current" />
+                {r.score.toFixed(1)}
+              </span>
+            )}
+          </div>
+        )}
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-1 pt-4 pb-1">
+          <p className="line-clamp-1 text-[11px] leading-tight text-white">
+            {title}
+          </p>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+/** 关联条目：海报卡片网格（relation 显示为封面右上角标），点击打开应用内详情弹窗 */
 function RelationsSection({
   data,
   nav,
@@ -194,40 +302,15 @@ function RelationsSection({
 }) {
   const list = data.slice(0, MAX_RELATIONS);
   return (
-    <div className="space-y-1.5">
+    <div className={CARD_GRID}>
       {list.map((r) => (
-        <button
-          key={r.id}
-          type="button"
-          onClick={() => nav.open(p1NavSubject(r))}
-          onMouseEnter={() => nav.schedulePrefetch(r.id)}
-          onMouseLeave={nav.cancelPrefetch}
-          className="flex w-full items-center gap-2 rounded-md p-1 text-left transition-colors hover:bg-muted/40"
-          title={`查看详情：${r.nameCN || r.name}`}
-        >
-          {r.images?.grid || r.images?.medium || r.images?.small ? (
-            <img
-              src={r.images?.grid || r.images?.medium || r.images?.small}
-              alt=""
-              loading="lazy"
-              className="aspect-[5/7] w-7 shrink-0 rounded bg-muted/50 object-cover"
-            />
-          ) : (
-            <div className="aspect-[5/7] w-7 shrink-0 rounded bg-muted/50" />
-          )}
-          <span className="shrink-0 rounded bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground">
-            {r.relation}
-          </span>
-          <span className="min-w-0 flex-1 truncate text-xs">
-            {r.nameCN || r.name}
-          </span>
-        </button>
+        <P1SubjectCard key={r.id} nav={nav} r={r} badge={r.relation} />
       ))}
     </div>
   );
 }
 
-/** 相关推荐：紧凑行（封面 + 名称 + 评分），点击打开应用内详情弹窗 */
+/** 相关推荐：海报卡片网格（评分显示为海报右上角标），点击打开应用内详情弹窗 */
 function RecsSection({
   data,
   nav,
@@ -237,37 +320,9 @@ function RecsSection({
 }) {
   const list = data.slice(0, MAX_RECS);
   return (
-    <div className="space-y-1.5">
+    <div className={CARD_GRID}>
       {list.map((r, i) => (
-        <button
-          key={i}
-          type="button"
-          onClick={() => nav.open(p1NavSubject(r))}
-          onMouseEnter={() => r.id && nav.schedulePrefetch(r.id)}
-          onMouseLeave={nav.cancelPrefetch}
-          className="flex w-full items-center gap-2 rounded-md p-1 text-left transition-colors hover:bg-muted/40"
-          title={`查看详情：${r.nameCN || r.name}`}
-        >
-          {r.images?.grid || r.images?.medium || r.images?.small ? (
-            <img
-              src={r.images?.grid || r.images?.medium || r.images?.small}
-              alt=""
-              loading="lazy"
-              className="aspect-[5/7] w-7 shrink-0 rounded bg-muted/50 object-cover"
-            />
-          ) : (
-            <div className="aspect-[5/7] w-7 shrink-0 rounded bg-muted/50" />
-          )}
-          <span className="min-w-0 flex-1 truncate text-xs">
-            {r.nameCN || r.name}
-          </span>
-          {!!r.score && r.score > 0 && (
-            <span className="inline-flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground">
-              <Star className="size-3 fill-current text-amber-500" />
-              {r.score.toFixed(1)}
-            </span>
-          )}
-        </button>
+        <P1SubjectCard key={i} nav={nav} r={r} />
       ))}
     </div>
   );
@@ -298,7 +353,7 @@ function RelationsLazy({ subjectId }: { subjectId: number }) {
   return (
     <div ref={ref}>
       {hidden ? null : (
-        <SectionBody title="关联条目" skeleton="rows" hasData={hasData}>
+        <SectionBody title="关联条目" skeleton="cards" hasData={hasData}>
           {q.data ? <RelationsSection data={q.data} nav={nav} /> : null}
         </SectionBody>
       )}
@@ -316,7 +371,7 @@ function RecsLazy({ subjectId }: { subjectId: number }) {
   return (
     <div ref={ref}>
       {hidden ? null : (
-        <SectionBody title="相关推荐" skeleton="rows" hasData={hasData}>
+        <SectionBody title="相关推荐" skeleton="cards" hasData={hasData}>
           {q.data ? <RecsSection data={q.data} nav={nav} /> : null}
         </SectionBody>
       )}
