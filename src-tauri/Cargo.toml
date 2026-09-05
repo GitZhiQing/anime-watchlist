@@ -1,6 +1,6 @@
 [package]
 name = "anime-watchlist"
-version = "1.4.0"
+version = "1.5.0"
 description = "追番计划 - 基于 Bangumi API 的追番软件"
 authors = ["GitZhiQing"]
 edition = "2021"
