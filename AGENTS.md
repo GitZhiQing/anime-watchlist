@@ -7,7 +7,7 @@
 ```bash
 npm install              # 安装依赖
 npm run tauri dev        # 开发（Vite HMR + Tauri 窗口）
-npm run tauri build      # 生产构建（便携 exe；bundle.active=false 不产 NSIS/MSI 安装包）
+npm run tauri build      # 生产构建（便携 exe；bundle.active=false 不产 NSIS/MSI 安装包）；成功后自动在桌面生成/覆盖快捷方式 追番计划.lnk（scripts/tauri.mjs 转发包装 + make-shortcut.mjs，指向 target/release 产物；CI 环境自动跳过；dev 等其余子命令行为不变）
 npx tsc --noEmit         # 仅类型检查
 npm run bump minor       # 仅更新版本并提交（不打 tag 不推送）
 npm run release patch    # 发布（更新 + 提交 + 打 tag + 推送，触发 CI）

@@ -65,7 +65,10 @@ anime-watchlist/
 │   ├── Cargo.toml
 │   └── tauri.conf.json           # 应用元数据、窗口、打包配置
 ├── scripts/
-│   └── release.mjs               # 一键发布脚本
+│   ├── build-frontend.mjs        # tauri beforeBuildCommand：tsc + vite build，并把 dist 拷到 src-tauri/dist
+│   ├── tauri.mjs                 # npm run tauri 转发包装（build 成功后触发桌面快捷方式生成）
+│   ├── make-shortcut.mjs         # 桌面快捷方式 追番计划.lnk 生成（PowerShell WScript.Shell）
+│   └── release.mjs               # 版本更新 / 发布脚本
 ├── .github/workflows/
 │   └── release.yml               # CI/CD（推送标签时构建并发布 Release）
 ├── index.html                    # Vite 入口（含防闪烁主题脚本）
@@ -163,12 +166,14 @@ Bangumi OAuth 2.0 流程：应用注册 → 获取授权码 → 换访问令牌�
 npm run dev           # Vite 开发服务器（端口 3000，HMR 3001）
 npm run tauri dev     # Tauri 开发模式（Vite HMR + Tauri 窗口）
 npm run build         # TypeScript 类型检查 + Vite 构建 → dist/
-npm run tauri build   # 前端构建 + Rust release 编译（bundle.active=false，不产安装包）
+npm run tauri build   # 前端构建 + Rust release 编译（bundle.active=false，不产安装包）；成功后自动在桌面生成/覆盖快捷方式 追番计划.lnk
 npm run bump <bump>   # 仅更新版本：改 5 处版本号 + 提交（不打 tag 不推送）
 npm run release <bump> # 发布：更新 + 提交 + 打 tag + 推送（触发 CI）
 ```
 
 产物：`src-tauri/target/release/anime-watchlist.exe`（便携 exe）+ 前端 `dist/`。本项目的 `bundle.active` 设为 `false`，不发 NSIS/MSI 安装包；CI 另行把 exe + dist 打成便携 zip 发布。
+
+**桌面快捷方式**：`npm run tauri` 由 `scripts/tauri.mjs` 转发包装（参数原样透传官方 CLI，dev 等其余子命令行为不变），仅当 `build` 子命令成功后自动调用 `scripts/make-shortcut.mjs`，经 PowerShell `WScript.Shell` 在当前用户桌面生成/覆盖快捷方式 `追番计划.lnk`（指向 `target/release` 产物，无额外 npm 依赖；CI 环境或 exe 缺失时自动跳过，不阻塞构建链）。
 
 ### 5.2 版本更新与发布（两件事）
 
