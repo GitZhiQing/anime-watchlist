@@ -18,33 +18,41 @@ npm run release patch    # 发布（更新 + 提交 + 打 tag + 推送，触发 
 ```
 src/
   main.tsx              # 入口，QueryClientProvider
-  App.tsx               # 侧边栏（追番/收藏/配置/关于）+ 内容区路由
-  globals.css           # Tailwind v4 + shadcn 主题变量 + 滚动条样式
-  pages/                # 四个页面组件
+  App.tsx               # 侧边栏（追番/新番/找番/配置/关于）+ 内容区路由（页面保活，切页不丢状态）
+  globals.css           # Tailwind v4 + shadcn 主题变量 + 折叠动画 + 滚动条样式
   components/
-    layout/             # TitleBar（无边框窗口控件）、ThemeToggle
+    layout/             # TitleBar（无边框窗口控件）、ThemeToggle（亮/暗/跟随系统三态）
     ui/                 # shadcn 组件（CLI 生成）
-    SubjectRow.tsx      # 列表项（封面/信息/展开/操作槽）
-    SubjectDetail.tsx   # 展开后的完整详情
-    CollectAction.tsx   # 收藏页展开后的收藏操作
-    BangumiLink.tsx     # 打开 Bangumi 条目页
-    WatchlistToolbar.tsx # 追番页工具栏（快速导航/条目类型筛选/刷新/折叠全部）
+    SubjectRow.tsx      # 列表行：标题行（xs 收藏下拉 + Bangumi 图标）+ 可展开详情 + 搜索高亮
+    EnrichedSubjectRow.tsx # 带详情补全的列表行（新番列表/找番热度榜共用）：进入视口才拉 v0 详情回填简介/标签/NSFW
+    SubjectDetailView.tsx # 统一详情容器（inline=展开行 / dialog=卡片弹窗）：字段/标签/「我的」折叠/简介/p1
+    SubjectGridCard.tsx  # 网格视图海报卡片（追番/新番共用，subject+caption props，点击开 dialog 详情）
+    SubjectGroup.tsx     # 折叠分组容器（追番收藏夹分组 / 新番星期分组共用）
+    ViewTabs.tsx         # 列表/网格视图切换 Tabs（追番/新番共用）
+    SubjectP1Sections.tsx # p1 扩展信息（角色 CV/关联条目/相关推荐，滚动可见才请求+骨架占位，失败静默隐藏）
+    CollectAction.tsx    # 收藏/移动/取消收藏下拉（xs~sm，乐观更新）
+    ProgressEdit.tsx     # RateStars（我的评分）+ ProgressRows（我的进度：逐集/步进 + 书籍卷）
+    BangumiLink.tsx      # Bangumi 外链（标题行内联图标模式）
+    FadeImg.tsx / ErrorBoundary.tsx / SubjectSummary.tsx # 图片淡入 / 详情渲染兜底 / 简介排版
+    SearchInput.tsx、WatchlistToolbar.tsx # 搜索框、追番工具栏（类型筛选/排序组合/跳转/刷新）
   lib/
     bgm.ts              # HTTP 客户端（@tauri-apps/plugin-http，UA+Bearer+401刷新）
     auth.ts             # OAuth 流程编排
     proxy.ts            # HTTP 代理配置（store→插件 ClientOptions.proxy 转换 + 连通性测试）
     store.ts            # Store 插件封装（凭据/token/代理/偏好）
-    queries.ts          # TanStack Query hooks（缓存+失效）
+    queries.ts          # TanStack Query hooks（缓存+乐观更新+精准失效+hover预取）
+    p1.ts               # p1 私有扩展信息（角色/关联/推荐，宽松解析静默失败）
+    trending.ts         # 热度榜（p1）+ 日历兜底映射
     utils.ts            # cn() 工具
-  hooks/               # useAuthUser
-  pages/               # Watchlist / Collection / Config / About
-  types/bgm.ts          # Bangumi 数据类型（SlimSubject/Subject/UserCollection/枚举）
+  hooks/               # useAuthUser / useOAuthFlow / usePersistentState / useInViewOnce
+  pages/               # Watchlist / Calendar / Collection / Config / About 五个页面
+  types/bgm.ts          # Bangumi 数据类型（SlimSubject/Subject/UserCollection/枚举/p1）
 src-tauri/
   src/lib.rs            # 插件注册 + OAuth 本地回环服务器（tiny_http，动态端口 7359–7369）
   src/main.rs
   capabilities/default.json  # 权限（窗口/store/http/opener）
   tauri.conf.json       # 无边框窗口、Vite dev URL
-docs/                   # 文档索引（api/ 接口文档 + dev/ 开发文档，见 docs/README.md）
+docs/                   # 文档（API.md 接口总文档 + dev/ 开发文档，见 docs/README.md）
 ```
 
 ## 关键设计决策
@@ -54,7 +62,11 @@ docs/                   # 文档索引（api/ 接口文档 + dev/ 开发文档�
 - **HTTP 代理**：`@tauri-apps/plugin-http` 的 `fetch` 支持 `ClientOptions.proxy`，`proxy.ts` 把 store 里的配置转成 `{ all: { url, basicAuth? } }` 注入所有请求（bgm.ts/auth.ts 共用）。配置页提供地址（必填）+ 可选 Basic 认证 + 测试连接。封面/头像图片走 webview 不经此代理
 - **OAuth 回调**：本地回环服务器动态选端口（7359–7369，每个端口先 IPv6 `::1` 后 IPv4 `127.0.0.1`），首个可用即用；全部被占才回退手动粘贴 code 模式。换 token 的 `redirect_uri` 等于授权时用的动态值（Bangumi 实测支持，符合 RFC 8252 loopback OAuth），故无需在开发者后台登记回调地址。配置页可勾选「固定端口 7359」回退固定模式（需后台登记）。授权交互由 `useOAuthFlow` 状态机驱动（显式阶段 + 120s 倒计时 + 可取消）；Rust 绑定端口后 emit `oauth-port` 事件，JS 据此构造动态 `redirect_uri` 再开授权页。`doRefresh` 读取 store 持久化的 `redirect_uri` 保证刷新时传值一致。CSRF `state` 参数自动模式校验。
 - **凭据管理**：用户自填 client_id/secret，应用不内置凭据
-- **缓存**：TanStack Query，条目详情 staleTime 30min，收藏列表 1min + mutation 失效
+- **缓存与乐观更新**：TanStack Query（条目详情/剧集 30min，日历/热度 10min，收藏列表 1min，单条收藏 2min，搜索 5min，p1 扩展 1h）。全局 `gcTime` 30min（默认 5min 会在 staleTime 内就回收缓存导致重复请求）；`refetchOnWindowFocus`/`refetchOnReconnect` 均关闭，桌面端焦点切换/网络恢复不触发后台重拉。收藏 mutation **乐观直写全部缓存**（`patchCachedCollections`）+ 失败回滚，成功仅精准失效单条、列表只置 stale 不重拉——勿恢复对 `["collections"]` 的全量失效（会触发 5 类全量分页重拉）。收藏状态读取一律走 `useUserCollectionSmart`（先查列表缓存，命中零请求），勿直接单条 GET。三个 keep-alive 页面均由 App 内 `*Visited` 门控（`watchlistVisited`/`calendarVisited`/`collectionVisited`），首次进入对应页才拉取，冷启动停在其他页零请求
+- **统一详情容器**：`SubjectDetailView` 是全应用唯一的详情渲染单元（inline=展开行 / dialog=弹窗），字段顺序、加载骨架、错误重试、p1 区块只写一份；收藏/外链操作位于标题行（列表行或弹窗头部），「我的」折叠栏承载评分/进度/备注
+- **追番/新番视图统一**：两页共用 `ViewTabs`（列表/网格切换，位于搜索框右侧）与 `SubjectGroup`（折叠分组容器）。新番页默认列表视图，两种视图都是周一→周日 7 个分组（旧存值 `prefs.calendar.viewMode="table"` 归一化为网格）；网格卡片共用 `SubjectGridCard`（`subject` + `caption` props，追番传进度、新番传在看人数）
+- **列表信息补全**：`/calendar`、p1 热度榜等列表源缺简介/标签/NSFW（实测 calendar summary 全空）；`EnrichedSubjectRow`（新番列表行、找番热度榜共用）经 `useInViewOnce` 进入视口后才逐行调 `GET /v0/subjects/{id}` 回填（`mergeSubjectDetail`），与 hover 预取/展开详情共享 `["subject", id]` 30min 缓存，失败静默降级；网格视图不做补全（卡片无简介/标签），搜索结果自带 `short_summary` 也无需补全
+- **追番排序**：排序键 默认/收藏/评分/名称/更新（`collect`=条目收藏人数 `collection_total`，接口可能缺省按 0）+ 升降序 toggle。持久化 `prefs.watchlist.sortReversed`（布尔，以各键自然方向为基准取反），老用户已有排序行为不变；「默认」倒序 = 接口原序整体反转
 - **封面**：列表用 `images.small`（`object-contain`，容器比例 `aspect-[5/7]`），弹大图用 `images.medium`
 
 ## 版本更新与发布（两件事）
@@ -95,5 +107,7 @@ CI 在 `windows-latest`：安装依赖 → `npm run tauri build` → 打包便�
 - **端口**：开发用 3000（HMR 3001），host 固定 127.0.0.1。本机 Windows 保留 1390-1489 等段，不能用那些段
 - **204/空 body**：`bgmRequest` 统一用 `res.text()` 读取，空则返回 undefined，避免 JSON 解析报错
 - **SlimSubject vs Subject**：列表接口返回 SlimSubject（`short_summary`/顶层 `score`），完整 Subject 仅 `GET /v0/subjects/{id}` 有 `summary`/`rating.score`/`total_episodes`
+- **infobox 形状多态**：Bangumi 部分条目 infobox 缺 `values` 或整体非数组，渲染前必须容错（`infoboxValue`）；详情树包 ErrorBoundary，数据异常只降级单区块不白屏
+- **p1 私有接口**（next.bgm.tv，无官方文档）：解析宽松、失败静默降级（区块直接隐藏），缓存 1h（`lib/p1.ts`）
 - **收藏默认私密**：POST/PATCH collection 必带 `private:true`
 - **Bangumi API base**：`https://api.bgm.tv`（v0），OAuth 用 `https://bgm.tv`
