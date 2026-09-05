@@ -26,11 +26,11 @@ src/
     SubjectRow.tsx      # 列表行：标题行（xs Bangumi 图标 + 收藏下拉）+ 可展开详情 + 搜索高亮
     EnrichedSubjectRow.tsx # 带详情补全的列表行（新番列表/找番热度榜共用）：进入视口才拉 v0 详情回填简介/标签/NSFW
     SubjectDetailView.tsx # 统一详情容器（inline=展开行 / dialog=卡片弹窗）：字段/标签/「我的」折叠/简介/p1
-    SubjectDetailDialog.tsx # 应用内详情弹窗壳（Dialog + SubjectDetailView dialog，网格卡片/p1 关联·推荐行共用）
+    SubjectDetailDialog.tsx # 应用内详情弹窗壳（Dialog + SubjectDetailView dialog，网格卡片/p1 关联·推荐卡片共用）
     SubjectGridCard.tsx  # 网格视图海报卡片（追番/新番共用，subject+caption props，点击开详情弹窗）
     SubjectGroup.tsx     # 折叠分组容器（追番收藏夹分组 / 新番星期分组共用）
     ViewTabs.tsx         # 列表/网格视图切换 Tabs（追番/新番共用）
-    SubjectP1Sections.tsx # p1 扩展信息（角色 CV/关联条目/相关推荐，滚动可见才请求+骨架占位，失败静默隐藏；关联/推荐行点击应用内打开详情弹窗，hover 预取）
+    SubjectP1Sections.tsx # p1 扩展信息（角色 CV/关联条目/相关推荐，滚动可见才请求+骨架占位，失败静默隐藏；关联/推荐为海报卡片网格（视觉对齐 SubjectGridCard），点击卡片应用内打开详情弹窗，hover 预取）
     CollectAction.tsx    # 收藏/移动/取消收藏下拉（xs~sm，乐观更新；非 modal——嵌 modal 详情弹窗时避免连带关闭弹窗）
     ProgressEdit.tsx     # RateStars（我的评分）+ ProgressRows（我的进度：逐集/步进 + 书籍卷）
     BangumiLink.tsx      # Bangumi 外链（标题行内联图标模式）
