@@ -38,6 +38,11 @@ export async function getStore<T>(key: string): Promise<T | undefined> {
 }
 
 export async function setStore(key: string, value: unknown): Promise<void> {
+  // undefined 经 JSON 序列化会丢 value 键，插件侧报 invalid args——约定为清除该键
+  if (value === undefined) {
+    await deleteStore(key);
+    return;
+  }
   await store.set(key, value);
   await store.save();
 }

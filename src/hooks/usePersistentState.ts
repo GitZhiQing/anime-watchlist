@@ -13,7 +13,8 @@ export function usePersistentState<T>(key: string, initial: T) {
   useEffect(() => {
     let cancelled = false;
     getStore<T>(key).then((v) => {
-      if (!cancelled && v !== undefined && v !== null) setValue(v);
+      if (cancelled) return;
+      if (v !== undefined && v !== null) setValue(v);
       loaded.current = true;
     });
     return () => {
@@ -22,7 +23,11 @@ export function usePersistentState<T>(key: string, initial: T) {
   }, [key]);
 
   useEffect(() => {
-    if (loaded.current) setStore(key, value);
+    // 后台写回，失败只警告不中断（Store IO 异常不应产生未捕获的 promise rejection）
+    if (loaded.current)
+      setStore(key, value).catch((e) =>
+        console.warn(`[prefs] 写入 ${key} 失败`, e),
+      );
   }, [key, value]);
 
   return [value, setValue] as const;
