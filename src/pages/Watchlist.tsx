@@ -1,26 +1,15 @@
 import { useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronDown, Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { Search } from "lucide-react";
 import { SearchInput } from "@/components/SearchInput";
-import { ProgressEdit } from "@/components/ProgressEdit";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { SubjectRow } from "@/components/SubjectRow";
-import { BangumiLink } from "@/components/BangumiLink";
+import { SubjectGridCard } from "@/components/SubjectGridCard";
+import { SubjectGroup } from "@/components/SubjectGroup";
+import { ViewTabs, type ViewMode } from "@/components/ViewTabs";
 import { WatchlistToolbar } from "@/components/WatchlistToolbar";
-import { usePatchCollection } from "@/lib/queries";
+import { usePersistentState } from "@/hooks/usePersistentState";
 import {
   COLLECTION_LABELS,
   COLLECTION_ORDER,
@@ -28,8 +17,8 @@ import {
   SubjectType,
 } from "@/types/bgm";
 import type { UserCollection } from "@/types/bgm";
-import { cn, smoothScrollTo } from "@/lib/utils";
-import { type WatchSortKey } from "@/App";
+import { smoothScrollTo } from "@/lib/utils";
+import { type PageKey, type WatchSortDir, type WatchSortKey } from "@/App";
 
 /* ---- 追番列表展示组件（纯展示，与 WatchlistToolbar 分开） ---- */
 
@@ -46,32 +35,22 @@ interface WatchlistProps {
   groups: Record<number, UserCollection[]>;
   openMap: Record<number, boolean>;
   setOpenMap: React.Dispatch<React.SetStateAction<Record<number, boolean>>>;
+  /** 本地搜索关键词，行内标题/简介高亮 */
+  highlight?: string;
+  /** 视图模式：列表 / 网格 */
+  viewMode: ViewMode;
+  /** 跨页导航（空组引导「去找番搜索」用） */
+  onNavigate: (page: PageKey) => void;
 }
 
 function Watchlist({
   groups,
   openMap,
   setOpenMap,
+  highlight,
+  viewMode,
+  onNavigate,
 }: WatchlistProps) {
-  const patchMut = usePatchCollection();
-
-  function handleMove(item: UserCollection, type: CollectionType) {
-    if (type === item.type || patchMut.isPending) return;
-    patchMut.mutate(
-      { subjectId: item.subject_id, type },
-      {
-        onSuccess: () =>
-          toast.success(
-            `已移入「${COLLECTION_LABELS[type]}」`,
-          ),
-        onError: (e) =>
-          toast.error("移动失败", {
-            description: e instanceof Error ? e.message : String(e),
-          }),
-      },
-    );
-  }
-
   /** 列表态行内进度（与评分/话数等元信息同一行）：看到第 N 话 + 我的评分 */
   function ProgressInfo({ item }: { item: UserCollection }) {
     const eps = item.subject.eps ?? 0;
@@ -89,110 +68,76 @@ function Watchlist({
     );
   }
 
+  /** 分组空态：在看/想看给「去找番搜索」引导，其余仅文案 */
+  function EmptyGroup({ type }: { type: CollectionType }) {
+    const guide = type === CollectionType.Doing || type === CollectionType.Wish;
+    return (
+      <div className="flex flex-col items-center gap-2 px-4 py-6 text-xs text-muted-foreground">
+        <span>暂无{COLLECTION_LABELS[type]}条目</span>
+        {guide && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1 text-xs"
+            onClick={() => onNavigate("collection")}
+          >
+            <Search className="size-3.5" />
+            去找番搜索
+          </Button>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-2">
-      <div className="space-y-2">
-        {COLLECTION_ORDER.map((type) => {
-          const items = groups[type] ?? [];
-          const open = openMap[type];
-          return (
-            <Collapsible
-              key={type}
-              id={`collection-${type}`}
-              open={open}
-              onOpenChange={(o) =>
-                setOpenMap((m) => ({ ...m, [type]: o }))
-              }
-              className="rounded-lg border border-border"
-            >
-              <CollapsibleTrigger className="flex w-full items-center justify-between px-4 py-2.5 text-sm font-medium hover:bg-muted/50">
-                <span>
-                  {COLLECTION_LABELS[type as CollectionType]}
-                  <span className="ml-2 text-muted-foreground">
-                    ({items.length})
-                  </span>
-                </span>
-                <ChevronDown
-                  className={cn(
-                    "size-4 transition-transform",
-                    open && "rotate-180",
-                  )}
-                />
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                {items.length === 0 ? (
-                  <div className="px-4 py-3 text-xs text-muted-foreground">
-                    暂无
-                  </div>
-                ) : (
-                  <div className="border-t border-border p-1">
-                    {items.map((c) => (
-                      <SubjectRow
-                        key={c.subject_id}
-                        subject={c.subject}
-                        extraInfo={<ProgressInfo item={c} />}
-                        expandedAction={
-                          <>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  disabled={patchMut.isPending}
-                                  className="gap-1"
-                                >
-                                  {patchMut.isPending &&
-                                  patchMut.variables?.subjectId ===
-                                    c.subject_id ? (
-                                    <Loader2 className="size-4 animate-spin" />
-                                  ) : (
-                                    COLLECTION_LABELS[c.type as CollectionType]
-                                  )}
-                                  <ChevronDown className="size-3.5" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                {COLLECTION_ORDER.map((t) => (
-                                  <DropdownMenuItem
-                                    key={t}
-                                    onClick={() =>
-                                      handleMove(c, t as CollectionType)
-                                    }
-                                  >
-                                    <Check
-                                      className={cn(
-                                        "size-3.5",
-                                        c.type === t
-                                          ? "opacity-100"
-                                          : "opacity-0",
-                                      )}
-                                    />
-                                    {COLLECTION_LABELS[t as CollectionType]}
-                                  </DropdownMenuItem>
-                                ))}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                            <BangumiLink subjectId={c.subject_id} />
-                            <div className="w-full">
-                              <ProgressEdit
-                                subjectId={c.subject_id}
-                                subjectType={c.subject.type}
-                                epStatus={c.ep_status}
-                                rate={c.rate}
-                                totalEps={c.subject.eps ?? 0}
-                              />
-                            </div>
-                          </>
-                        }
-                      />
-                    ))}
-                  </div>
-                )}
-              </CollapsibleContent>
-            </Collapsible>
-          );
-        })}
-      </div>
+      {COLLECTION_ORDER.map((type) => {
+        const items = groups[type] ?? [];
+        const open = openMap[type];
+        return (
+          <SubjectGroup
+            key={type}
+            id={`collection-${type}`}
+            title={COLLECTION_LABELS[type as CollectionType]}
+            count={items.length}
+            open={open}
+            onOpenChange={(o) => setOpenMap((m) => ({ ...m, [type]: o }))}
+          >
+            {items.length === 0 ? (
+              <EmptyGroup type={type as CollectionType} />
+            ) : viewMode === "grid" ? (
+              <div className="border-t border-border p-2">
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-3">
+                  {items.map((c) => (
+                    <SubjectGridCard
+                      key={c.subject_id}
+                      subject={c.subject}
+                      caption={
+                        c.ep_status > 0
+                          ? `看到 ${c.ep_status}${
+                              (c.subject.eps ?? 0) > 0 ? `/${c.subject.eps}` : ""
+                            }`
+                          : undefined
+                      }
+                    />
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="border-t border-border p-1">
+                {items.map((c) => (
+                  <SubjectRow
+                    key={c.subject_id}
+                    subject={c.subject}
+                    extraInfo={<ProgressInfo item={c} />}
+                    highlight={highlight}
+                  />
+                ))}
+              </div>
+            )}
+          </SubjectGroup>
+        );
+      })}
     </div>
   );
 }
@@ -201,7 +146,7 @@ function Watchlist({
 
 interface WatchlistPageProps {
   loading: boolean;
-  /** 首次加载门控：全部相关查询就绪前为 true，期间显示 spinner 而非部分列表 */
+  /** 首次加载门控：全部相关查询就绪前为 true，期间显示骨架屏而非部分列表 */
   initialLoading: boolean;
   error: Error | null;
   totalCount: number;
@@ -214,6 +159,11 @@ interface WatchlistPageProps {
   onSubjectTypeChange: (t: SubjectType | undefined) => void;
   sortKey: WatchSortKey;
   onSortChange: (k: WatchSortKey) => void;
+  /** 当前排序方向（升/降序） */
+  sortDir: WatchSortDir;
+  onToggleSortDir: () => void;
+  /** 跨页导航（空组引导用） */
+  onNavigate: (page: PageKey) => void;
 }
 
 export function WatchlistPage({
@@ -230,11 +180,19 @@ export function WatchlistPage({
   onSubjectTypeChange,
   sortKey,
   onSortChange,
+  sortDir,
+  onToggleSortDir,
+  onNavigate,
 }: WatchlistPageProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
 
   const [keyword, setKeyword] = useState("");
+  // 列表/网格视图（持久化）
+  const [viewMode, setViewMode] = usePersistentState<ViewMode>(
+    "prefs.watchlist.viewMode",
+    "list",
+  );
 
   const filteredGroups = useMemo(() => {
     const q = keyword.trim().toLowerCase();
@@ -289,6 +247,8 @@ export function WatchlistPage({
             placeholder="条目名称/标签"
             className="w-44"
           />
+          {/* 视图切换（与追番页/新番页共用样式） */}
+          <ViewTabs value={viewMode} onChange={setViewMode} />
           <WatchlistToolbar
             loading={loading}
             totalCount={totalCount}
@@ -298,6 +258,8 @@ export function WatchlistPage({
             onSubjectTypeChange={onSubjectTypeChange}
             sortKey={sortKey}
             onSortChange={onSortChange}
+            sortDir={sortDir}
+            onToggleSortDir={onToggleSortDir}
             onRefresh={refresh}
             onJumpTo={jumpTo}
             onJumpToTop={jumpToTop}
@@ -306,30 +268,65 @@ export function WatchlistPage({
       }
     >
       {initialLoading ? (
-        <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
-          <Loader2 className="mr-2 size-5 animate-spin" />
-          加载数据中...
-        </div>
+        <WatchlistSkeleton />
       ) : (
         <>
           {error && (
-            <p className="mb-2 text-sm text-destructive">
-              {error instanceof Error ? error.message : "加载失败"}
-            </p>
+            <div className="mb-2 flex items-center gap-2 text-sm text-destructive">
+              <span>{error instanceof Error ? error.message : "加载失败"}</span>
+              <button
+                type="button"
+                onClick={refresh}
+                className="text-xs underline underline-offset-2 hover:text-foreground"
+              >
+                重试
+              </button>
+            </div>
           )}
           {hasMatches || keyword.trim() === "" ? (
             <Watchlist
               groups={filteredGroups}
               openMap={openMap}
               setOpenMap={setOpenMap}
+              highlight={keyword}
+              viewMode={viewMode}
+              onNavigate={onNavigate}
             />
           ) : (
             <p className="flex items-center justify-center py-16 text-sm text-muted-foreground">
-              未找到匹配的条目
+              未找到匹配的条目，试试其他关键词或清空筛选
             </p>
           )}
         </>
       )}
     </PageLayout>
+  );
+}
+
+/** 追番页首屏骨架：五个分组头 + 每组两行占位 */
+function WatchlistSkeleton() {
+  return (
+    <div className="space-y-2">
+      {COLLECTION_ORDER.map((type) => (
+        <div key={type} className="rounded-lg border border-border">
+          <div className="flex items-center justify-between px-4 py-2.5">
+            <div className="h-4 w-24 animate-pulse rounded bg-muted" />
+            <div className="h-4 w-4 animate-pulse rounded bg-muted" />
+          </div>
+          <div className="space-y-2 border-t border-border p-2">
+            {[0, 1].map((i) => (
+              <div key={i} className="flex animate-pulse gap-3 rounded-md p-2">
+                <div className="aspect-[5/7] w-16 shrink-0 rounded bg-muted" />
+                <div className="flex-1 space-y-1.5 pt-0.5">
+                  <div className="h-3.5 w-2/5 rounded bg-muted" />
+                  <div className="h-3 w-4/5 rounded bg-muted" />
+                  <div className="h-3 w-3/5 rounded bg-muted" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

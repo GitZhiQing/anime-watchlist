@@ -1,25 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, Loader2, Minus, Plus, RefreshCw } from "lucide-react";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Loader2, Minus, Plus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageLayout } from "@/components/layout/PageLayout";
-import { SubjectRow } from "@/components/SubjectRow";
-import { BangumiLink } from "@/components/BangumiLink";
-import { CollectAction } from "@/components/CollectAction";
-import { CalendarTable } from "@/components/CalendarTable";
+import { SubjectGridCard } from "@/components/SubjectGridCard";
+import { SubjectGroup } from "@/components/SubjectGroup";
+import { ViewTabs, type ViewMode } from "@/components/ViewTabs";
 import { SearchInput } from "@/components/SearchInput";
 import { useCalendar } from "@/lib/queries";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { cn } from "@/lib/utils";
 import type { CalendarDay, CalendarSubject, SlimSubject } from "@/types/bgm";
+import { EnrichedSubjectRow } from "@/components/EnrichedSubjectRow";
 
 /** 数字星期 (1=Mon..7=Sun) → 中文 */
 const WEEKDAY_CN = ["", "一", "二", "三", "四", "五", "六", "日"];
 
-type ViewMode = "table" | "list";
 type DensityMode = "full" | "compact";
 
 /* ---- 工具函数 ---- */
@@ -30,7 +28,8 @@ function getTodayBangumiWeekday(): number {
   return jsDay === 0 ? 7 : jsDay;
 }
 
-/** CalendarSubject → SlimSubject 字段映射，使 SubjectRow 可复用 */
+/** CalendarSubject → SlimSubject 字段映射，使 SubjectRow 可复用；
+ *  简介等缺失字段由 EnrichedSubjectRow 进入视口后自动补全 */
 function calendarToSlimSubject(cs: CalendarSubject): SlimSubject {
   return {
     id: cs.id,
@@ -39,9 +38,9 @@ function calendarToSlimSubject(cs: CalendarSubject): SlimSubject {
     name_cn: cs.name_cn,
     short_summary: cs.summary,
     // 共性字段映射到 SlimSubject，使 MetaRow（评分/话数/放送日期）与追番、收藏页一致
-    // date 后拼接星期，用   保持与 MetaRow gap-x-3 一致的间距
+    // date 后拼接星期，用    保持与 MetaRow gap-x-3 一致的间距
     date: cs.air_date
-      ? `${cs.air_date}    周${WEEKDAY_CN[cs.air_weekday] || ""}`
+      ? `${cs.air_date}    周${WEEKDAY_CN[cs.air_weekday] || ""}`
       : "",
     images: {
       ...cs.images,
@@ -84,12 +83,19 @@ function filterCalendarData(
 
 /* ---- 页面组件 ---- */
 
-export function Calendar() {
-  const { data, isLoading, error, refetch, isFetching } = useCalendar();
+interface CalendarProps {
+  /** 首次进入本页才启用日历查询（App 冷启动门控，keep-alive 首帧即渲染） */
+  visited?: boolean;
+}
+
+export function Calendar({ visited = true }: CalendarProps) {
+  const { data, isLoading, error, refetch, isFetching } = useCalendar(visited);
   const [viewMode, setViewMode] = usePersistentState<ViewMode>(
     "prefs.calendar.viewMode",
-    "table",
+    "list",
   );
+  // 旧版存值 "table" 归一化为网格
+  const view: ViewMode = viewMode === "list" ? "list" : "grid";
   const [density, setDensity] = usePersistentState<DensityMode>(
     "prefs.calendar.density",
     "full",
@@ -189,13 +195,8 @@ export function Calendar() {
             placeholder="新番名称"
             className="w-44"
           />
-          {/* 视图切换 */}
-          <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
-            <TabsList className="border border-border bg-background">
-              <TabsTrigger value="table">表格</TabsTrigger>
-              <TabsTrigger value="list">列表</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          {/* 视图切换（与追番页共用样式，文案 列表/网格） */}
+          <ViewTabs value={view} onChange={setViewMode} />
 
           {/* 完整 / 精简切换 */}
           <Tabs value={density} onValueChange={(v) => setDensity(v as DensityMode)}>
@@ -275,11 +276,7 @@ export function Calendar() {
       ) : (
         <>
           {filteredHasItems ? (
-            viewMode === "table" ? (
-              <CalendarTable data={filteredData} />
-            ) : (
-              <CalendarList data={filteredData} />
-            )
+            <CalendarGroups data={filteredData} viewMode={view} />
           ) : (
             <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
               {keyword.trim() ? "未找到匹配的条目" : "暂无放送数据"}
@@ -302,12 +299,20 @@ function CalendarExtraInfo({ item }: { item: CalendarSubject }) {
   return <p className="text-xs text-muted-foreground">{doing}</p>;
 }
 
-interface CalendarListProps {
-  data: CalendarDay[];
+/** 网格卡片说明文字：在看人数（与列表态一致） */
+function doingCaption(item: CalendarSubject): string | undefined {
+  return item.collection?.doing
+    ? `共 ${item.collection.doing} 人在看`
+    : undefined;
 }
 
-/** 每日放送列表视图：按周一至周日折叠分组 */
-function CalendarList({ data }: CalendarListProps) {
+interface CalendarGroupsProps {
+  data: CalendarDay[];
+  viewMode: ViewMode;
+}
+
+/** 每日放送视图：周一至周日折叠分组（分组样式与追番页一致），列表行 / 网格卡片两种内容 */
+function CalendarGroups({ data, viewMode }: CalendarGroupsProps) {
   const todayId = getTodayBangumiWeekday();
   const [openMap, setOpenMap] = useState<Record<number, boolean>>(() => {
     const initial: Record<number, boolean> = {};
@@ -319,51 +324,54 @@ function CalendarList({ data }: CalendarListProps) {
     <div className="space-y-2">
       {data.map((day) => {
         const isToday = day.weekday.id === todayId;
-        const open = openMap[day.weekday.id];
         return (
-          <Collapsible
+          <SubjectGroup
             key={day.weekday.id}
-            open={open}
-            onOpenChange={(o) => setOpenMap((m) => ({ ...m, [day.weekday.id]: o }))}
-            className="rounded-lg border border-border">
-            <CollapsibleTrigger
-              className={cn(
-                "flex w-full items-center justify-between px-4 py-2.5 text-sm font-medium hover:bg-muted/50",
-                isToday && "bg-primary/5",
-              )}>
-              <span>
-                <span className={cn(isToday && "text-primary")}>{day.weekday.cn}</span>
+            title={
+              <>
+                <span className={cn(isToday && "text-primary")}>
+                  {day.weekday.cn}
+                </span>
                 {isToday && (
                   <span className="ml-1.5 rounded bg-primary px-1 py-0.5 text-[10px] text-primary-foreground">
                     今天
                   </span>
                 )}
-                <span className="ml-2 text-muted-foreground">({day.items.length})</span>
-              </span>
-              <ChevronDown className={cn("size-4 transition-transform", open && "rotate-180")} />
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              {day.items.length === 0 ? (
-                <div className="px-4 py-3 text-xs text-muted-foreground">暂无</div>
-              ) : (
-                <div className="border-t border-border p-1">
+              </>
+            }
+            count={day.items.length}
+            open={openMap[day.weekday.id]}
+            onOpenChange={(o) =>
+              setOpenMap((m) => ({ ...m, [day.weekday.id]: o }))
+            }
+            headerClassName={isToday ? "bg-primary/5" : undefined}
+          >
+            {day.items.length === 0 ? (
+              <div className="px-4 py-3 text-xs text-muted-foreground">暂无</div>
+            ) : viewMode === "grid" ? (
+              <div className="border-t border-border p-2">
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-3">
                   {day.items.map((item) => (
-                    <SubjectRow
+                    <SubjectGridCard
                       key={item.id}
                       subject={calendarToSlimSubject(item)}
-                      extraInfo={<CalendarExtraInfo item={item} />}
-                      expandedAction={
-                        <div className="flex items-center gap-2">
-                          <CollectAction subjectId={item.id} />
-                          <BangumiLink subjectId={item.id} />
-                        </div>
-                      }
+                      caption={doingCaption(item)}
                     />
                   ))}
                 </div>
-              )}
-            </CollapsibleContent>
-          </Collapsible>
+              </div>
+            ) : (
+              <div className="border-t border-border p-1">
+                {day.items.map((item) => (
+                  <EnrichedSubjectRow
+                    key={item.id}
+                    subject={calendarToSlimSubject(item)}
+                    extraInfo={<CalendarExtraInfo item={item} />}
+                  />
+                ))}
+              </div>
+            )}
+          </SubjectGroup>
         );
       })}
     </div>

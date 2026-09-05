@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Check, ChevronDown, Filter, Flame, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,22 +12,48 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { SubjectRow } from "@/components/SubjectRow";
-import { BangumiLink } from "@/components/BangumiLink";
-import { CollectAction } from "@/components/CollectAction";
+import { EnrichedSubjectRow } from "@/components/EnrichedSubjectRow";
 import { useSearchSubjects, useTrendingFeed } from "@/lib/queries";
 import { SUBJECT_LABELS, SUBJECT_TYPES, SubjectType } from "@/types/bgm";
 import { cn } from "@/lib/utils";
 import { useAuthUser } from "@/hooks/useAuthUser";
 
+/** 行骨架（搜索中/热度榜加载中） */
+function RowSkeletons({ rows = 4 }: { rows?: number }) {
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} className="flex gap-3 rounded-md p-2">
+          <Skeleton className="aspect-[5/7] w-16 shrink-0" />
+          <div className="flex-1 space-y-1.5 pt-0.5">
+            <Skeleton className="h-3.5 w-2/5" />
+            <Skeleton className="h-3 w-full" />
+            <Skeleton className="h-3 w-3/5" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** 收藏页空态：热度榜。优先 p1 新增热度，接口失败自动兜底本周追番热度。 */
-function TrendingList() {
-  const { data, isLoading, isFallback } = useTrendingFeed();
+function TrendingList({ enabled }: { enabled: boolean }) {
+  const { data, isLoading, isFallback } = useTrendingFeed(
+    SubjectType.Anime,
+    20,
+    enabled,
+  );
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
-        <Loader2 className="mr-2 size-5 animate-spin" />
-        加载热门条目中...
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <h2 className="flex items-center gap-1.5 text-sm font-medium">
+            <Flame className="size-4 text-orange-500" />
+            热门条目
+          </h2>
+        </div>
+        <RowSkeletons rows={5} />
       </div>
     );
   }
@@ -50,7 +77,7 @@ function TrendingList() {
       </div>
       <div className="space-y-1">
         {data.map((it) => (
-          <SubjectRow
+          <EnrichedSubjectRow
             key={it.subject.id}
             subject={it.subject}
             extraInfo={
@@ -59,12 +86,6 @@ function TrendingList() {
                 {isFallback ? "追番中" : "热度"} {it.heat}
               </span>
             }
-            expandedAction={
-              <div className="flex items-center gap-2">
-                <CollectAction subjectId={it.subject.id} />
-                <BangumiLink subjectId={it.subject.id} />
-              </div>
-            }
           />
         ))}
       </div>
@@ -72,7 +93,12 @@ function TrendingList() {
   );
 }
 
-export function Collection() {
+interface CollectionProps {
+  /** 首次进入本页才启用热度榜查询（App 冷启动门控，keep-alive 首帧即渲染） */
+  visited?: boolean;
+}
+
+export function Collection({ visited = true }: CollectionProps) {
   const { user } = useAuthUser();
   const [keyword, setKeyword] = useState("");
   const [submitted, setSubmitted] = useState<string | null>(null);
@@ -106,6 +132,7 @@ export function Collection() {
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             placeholder="输入条目名称搜索"
+            data-search-input
             className="flex-1"
           />
           <DropdownMenu>
@@ -152,13 +179,14 @@ export function Collection() {
         {submitted ? (
           <>
             {!isFetching && !error && results.length === 0 && (
-              <p className="text-sm text-muted-foreground">未找到结果</p>
+              <p className="text-sm text-muted-foreground">未找到结果，试试其他关键词</p>
             )}
             {error && (
               <p className="text-sm text-destructive">
                 {error instanceof Error ? error.message : "搜索失败"}
               </p>
             )}
+            {isFetching && results.length === 0 && <RowSkeletons rows={5} />}
             {total > 0 && (
               <p className="text-xs text-muted-foreground">
                 已加载 {results.length} / 共 {total} 条
@@ -166,16 +194,7 @@ export function Collection() {
             )}
             <div className="space-y-1">
               {results.map((s) => (
-                <SubjectRow
-                  key={s.id}
-                  subject={s}
-                  expandedAction={
-                    <div className="flex items-center gap-2">
-                      <CollectAction subjectId={s.id} />
-                      <BangumiLink subjectId={s.id} />
-                    </div>
-                  }
-                />
+                <SubjectRow key={s.id} subject={s} />
               ))}
             </div>
             {hasNextPage && (
@@ -198,7 +217,7 @@ export function Collection() {
             )}
           </>
         ) : (
-          <TrendingList />
+          <TrendingList enabled={visited} />
         )}
       </div>
     </PageLayout>
