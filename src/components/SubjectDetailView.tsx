@@ -449,10 +449,10 @@ export function SubjectDetailView({
             <span className="min-w-0 truncate" title={title}>
               {title}
             </span>
+            <BangumiLink subjectId={subjectId} iconOnly />
             {showActions && (
               <CollectAction subjectId={subjectId} subject={subject} size="xs" />
             )}
-            <BangumiLink subjectId={subjectId} iconOnly />
             {typeBadge}
             {detail?.nsfw && <NSFWBadge />}
           </h2>

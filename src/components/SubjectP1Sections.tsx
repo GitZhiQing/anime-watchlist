@@ -1,18 +1,27 @@
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { useEffect, useRef, useState } from "react";
 import { Star } from "lucide-react";
 import {
+  usePrefetchSubject,
   useSubjectCharacters,
   useSubjectRelations,
   useSubjectRecs,
 } from "@/lib/queries";
+import { SubjectDetailDialog } from "@/components/SubjectDetailDialog";
 import { useInViewOnce } from "@/hooks/useInViewOnce";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { P1Character, P1RecItem, P1Relation } from "@/types/bgm";
+import type {
+  P1Character,
+  P1RecItem,
+  P1Relation,
+  SlimSubject,
+  SubjectImages,
+} from "@/types/bgm";
 
 /**
  * 详情底部的 p1 扩展信息：角色/CV、关联条目、相关推荐。
  * 私有接口、无官方文档：三区块各自观察视口，滚动可见才发请求（骨架占位避免布局跳变），
- * 失败/空数据整块消失（静默降级），不影响主详情展示；
+ * 仅「从未拿到数据」时失败/空结果才整块消失（静默降级）；
+ * 已加载过的区块后台重拉失败保留旧内容，不因 error 态抹掉；
  * 缓存 1 小时、保留 2 小时——重开同一详情弹窗不再重拉。
  */
 
@@ -36,7 +45,7 @@ function SectionSkeleton({ variant }: { variant: "avatars" | "rows" }) {
             key={i}
             className="flex w-20 shrink-0 flex-col items-center gap-1"
           >
-            <Skeleton className="size-16 rounded-md" />
+            <Skeleton className="aspect-[3/4] w-16 rounded-md" />
             <Skeleton className="h-3 w-14" />
           </div>
         ))}
@@ -72,6 +81,70 @@ function SectionBody({
   );
 }
 
+/**
+ * 区块可见性：拿到过数据就一直展示——TanStack Query 后台重拉失败时 status 翻 error
+ * 但 data 仍保留旧内容，不能因 isError 抹掉已展示的区块；
+ * 仅「从未拿到数据」（非 pending）的失败/空结果整块隐藏，pending 期间由 SectionBody 出骨架。
+ */
+function p1SectionState(
+  data: readonly unknown[] | undefined,
+  isPending: boolean,
+) {
+  const hasData = (data?.length ?? 0) > 0;
+  return { hasData, hidden: !isPending && !hasData };
+}
+
+/** p1 行点击 → 应用内详情弹窗（不外跳浏览器）。悬停 300ms 预取详情，与网格卡片一致。 */
+function useP1SubjectDialog() {
+  const [subject, setSubject] = useState<SlimSubject | null>(null);
+  const prefetchSubject = usePrefetchSubject();
+  const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  return {
+    open: (s: SlimSubject | undefined) => setSubject(s ?? null),
+    schedulePrefetch(id: number) {
+      window.clearTimeout(timer.current);
+      timer.current = window.setTimeout(() => prefetchSubject(id), 300);
+    },
+    cancelPrefetch() {
+      window.clearTimeout(timer.current);
+    },
+    element: subject ? (
+      <SubjectDetailDialog
+        subjectId={subject.id}
+        title={subject.name_cn || subject.name}
+        subject={subject}
+        open
+        onOpenChange={(o) => !o && setSubject(null)}
+      />
+    ) : null,
+  };
+}
+
+type P1SubjectNav = ReturnType<typeof useP1SubjectDialog>;
+
+/** p1 行条目 → 最小 SlimSubject（弹窗标题/收藏乐观插入用；详情本体由弹窗内自行拉取） */
+function p1NavSubject(r: {
+  id?: number;
+  type?: number;
+  name?: string;
+  nameCN?: string;
+  images?: SubjectImages;
+  score?: number;
+}): SlimSubject | undefined {
+  if (!r.id || !r.name) return undefined;
+  return {
+    id: r.id,
+    type: r.type ?? 0,
+    name: r.name,
+    name_cn: r.nameCN || r.name,
+    short_summary: "",
+    images: r.images ?? {},
+    tags: [],
+    ...(r.score && r.score > 0 ? { score: r.score } : null),
+  };
+}
+
 /** 角色/CV：横向滚动头像卡 */
 function CharactersSection({ data }: { data: P1Character[] }) {
   const list = data.slice(0, MAX_CHARACTERS);
@@ -90,10 +163,11 @@ function CharactersSection({ data }: { data: P1Character[] }) {
                 src={ch.images?.medium || ch.images?.large || ch.images?.small}
                 alt={ch.name}
                 loading="lazy"
-                className="size-16 rounded-md object-cover"
+                // 3:4 竖版固定框：竖长图裁顶部（保留脸部），横宽图垂直放满、水平居中
+                className="aspect-[3/4] w-16 rounded-md object-cover object-top"
               />
             ) : (
-              <div className="size-16 rounded-md bg-muted/60" />
+              <div className="aspect-[3/4] w-16 rounded-md bg-muted/60" />
             )}
             <span className="line-clamp-2 text-xs leading-tight">
               {ch.name}
@@ -110,8 +184,14 @@ function CharactersSection({ data }: { data: P1Character[] }) {
   );
 }
 
-/** 关联条目：关系标签 + 封面 + 名称，点击在浏览器打开 */
-function RelationsSection({ data }: { data: P1Relation[] }) {
+/** 关联条目：关系标签 + 封面 + 名称，点击打开应用内详情弹窗 */
+function RelationsSection({
+  data,
+  nav,
+}: {
+  data: P1Relation[];
+  nav: P1SubjectNav;
+}) {
   const list = data.slice(0, MAX_RELATIONS);
   return (
     <div className="space-y-1.5">
@@ -119,11 +199,11 @@ function RelationsSection({ data }: { data: P1Relation[] }) {
         <button
           key={r.id}
           type="button"
-          onClick={() =>
-            void openUrl(`https://bangumi.tv/subject/${r.id}`)
-          }
+          onClick={() => nav.open(p1NavSubject(r))}
+          onMouseEnter={() => nav.schedulePrefetch(r.id)}
+          onMouseLeave={nav.cancelPrefetch}
           className="flex w-full items-center gap-2 rounded-md p-1 text-left transition-colors hover:bg-muted/40"
-          title={`在 Bangumi 打开：${r.nameCN || r.name}`}
+          title={`查看详情：${r.nameCN || r.name}`}
         >
           {r.images?.grid || r.images?.medium || r.images?.small ? (
             <img
@@ -147,13 +227,27 @@ function RelationsSection({ data }: { data: P1Relation[] }) {
   );
 }
 
-/** 相关推荐：紧凑行（封面 + 名称 + 评分） */
-function RecsSection({ data }: { data: P1RecItem[] }) {
+/** 相关推荐：紧凑行（封面 + 名称 + 评分），点击打开应用内详情弹窗 */
+function RecsSection({
+  data,
+  nav,
+}: {
+  data: P1RecItem[];
+  nav: P1SubjectNav;
+}) {
   const list = data.slice(0, MAX_RECS);
   return (
     <div className="space-y-1.5">
       {list.map((r, i) => (
-        <div key={i} className="flex items-center gap-2">
+        <button
+          key={i}
+          type="button"
+          onClick={() => nav.open(p1NavSubject(r))}
+          onMouseEnter={() => r.id && nav.schedulePrefetch(r.id)}
+          onMouseLeave={nav.cancelPrefetch}
+          className="flex w-full items-center gap-2 rounded-md p-1 text-left transition-colors hover:bg-muted/40"
+          title={`查看详情：${r.nameCN || r.name}`}
+        >
           {r.images?.grid || r.images?.medium || r.images?.small ? (
             <img
               src={r.images?.grid || r.images?.medium || r.images?.small}
@@ -173,18 +267,17 @@ function RecsSection({ data }: { data: P1RecItem[] }) {
               {r.score.toFixed(1)}
             </span>
           )}
-        </div>
+        </button>
       ))}
     </div>
   );
 }
 
-/** 角色/CV 区块：滚动可见才请求，失败/空数据整块消失 */
+/** 角色/CV 区块：滚动可见才请求，无数据静默降级、重拉失败保留旧内容 */
 function CharactersLazy({ subjectId }: { subjectId: number }) {
   const { ref, inView } = useInViewOnce<HTMLDivElement>();
   const q = useSubjectCharacters(subjectId, inView);
-  const hasData = q.isSuccess && (q.data?.length ?? 0) > 0;
-  const hidden = q.isError || (q.isSuccess && !hasData);
+  const { hasData, hidden } = p1SectionState(q.data, q.isPending);
   return (
     <div ref={ref}>
       {hidden ? null : (
@@ -196,36 +289,38 @@ function CharactersLazy({ subjectId }: { subjectId: number }) {
   );
 }
 
-/** 关联条目区块：滚动可见才请求，失败/空数据整块消失 */
+/** 关联条目区块：滚动可见才请求，无数据静默降级、重拉失败保留旧内容 */
 function RelationsLazy({ subjectId }: { subjectId: number }) {
   const { ref, inView } = useInViewOnce<HTMLDivElement>();
   const q = useSubjectRelations(subjectId, inView);
-  const hasData = q.isSuccess && (q.data?.length ?? 0) > 0;
-  const hidden = q.isError || (q.isSuccess && !hasData);
+  const nav = useP1SubjectDialog();
+  const { hasData, hidden } = p1SectionState(q.data, q.isPending);
   return (
     <div ref={ref}>
       {hidden ? null : (
         <SectionBody title="关联条目" skeleton="rows" hasData={hasData}>
-          {q.data ? <RelationsSection data={q.data} /> : null}
+          {q.data ? <RelationsSection data={q.data} nav={nav} /> : null}
         </SectionBody>
       )}
+      {nav.element}
     </div>
   );
 }
 
-/** 相关推荐区块：滚动可见才请求，失败/空数据整块消失 */
+/** 相关推荐区块：滚动可见才请求，无数据静默降级、重拉失败保留旧内容 */
 function RecsLazy({ subjectId }: { subjectId: number }) {
   const { ref, inView } = useInViewOnce<HTMLDivElement>();
   const q = useSubjectRecs(subjectId, inView);
-  const hasData = q.isSuccess && (q.data?.length ?? 0) > 0;
-  const hidden = q.isError || (q.isSuccess && !hasData);
+  const nav = useP1SubjectDialog();
+  const { hasData, hidden } = p1SectionState(q.data, q.isPending);
   return (
     <div ref={ref}>
       {hidden ? null : (
         <SectionBody title="相关推荐" skeleton="rows" hasData={hasData}>
-          {q.data ? <RecsSection data={q.data} /> : null}
+          {q.data ? <RecsSection data={q.data} nav={nav} /> : null}
         </SectionBody>
       )}
+      {nav.element}
     </div>
   );
 }

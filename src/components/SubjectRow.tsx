@@ -185,9 +185,9 @@ export function SubjectRow({
                 <Highlight text={title} query={highlight} />
               </button>
             </CollapsibleTrigger>
-            {/* 收藏下拉（xs）+ Bangumi 链接紧贴标题右侧；均在触发器外，点击不触发行展开 */}
-            <CollectAction subjectId={subject.id} subject={subject} size="xs" />
+            {/* Bangumi 链接 + 收藏下拉（xs）紧贴标题右侧；均在触发器外，点击不触发行展开 */}
             <BangumiLink subjectId={subject.id} iconOnly />
+            <CollectAction subjectId={subject.id} subject={subject} size="xs" />
             {SUBJECT_LABELS[subject.type as SubjectType] && (
               <span
                 className={cn(

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Star } from "lucide-react";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { SubjectDetailView, NSFWBadge } from "@/components/SubjectDetailView";
+import { SubjectDetailDialog } from "@/components/SubjectDetailDialog";
+import { NSFWBadge } from "@/components/SubjectDetailView";
 import { FadeImg } from "@/components/FadeImg";
 import { usePrefetchSubject } from "@/lib/queries";
 import { cn } from "@/lib/utils";
@@ -83,20 +83,13 @@ export function SubjectGridCard({ subject, caption, className }: SubjectGridCard
         </p>
       </button>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent
-          showCloseButton={false}
-          className="flex h-[80vh] max-h-[80vh] w-[880px] max-w-[92vw] flex-col overflow-hidden p-4 sm:max-w-[880px]"
-        >
-          <DialogTitle className="sr-only">{title} 详情</DialogTitle>
-          <SubjectDetailView
-            subjectId={s.id}
-            variant="dialog"
-            title={title}
-            subject={s}
-          />
-        </DialogContent>
-      </Dialog>
+      <SubjectDetailDialog
+        open={open}
+        onOpenChange={setOpen}
+        subjectId={s.id}
+        title={title}
+        subject={s}
+      />
     </>
   );
 }
