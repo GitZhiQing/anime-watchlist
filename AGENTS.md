@@ -23,14 +23,15 @@ src/
   components/
     layout/             # TitleBar（无边框窗口控件）、ThemeToggle（亮/暗/跟随系统三态）
     ui/                 # shadcn 组件（CLI 生成）
-    SubjectRow.tsx      # 列表行：标题行（xs 收藏下拉 + Bangumi 图标）+ 可展开详情 + 搜索高亮
+    SubjectRow.tsx      # 列表行：标题行（xs Bangumi 图标 + 收藏下拉）+ 可展开详情 + 搜索高亮
     EnrichedSubjectRow.tsx # 带详情补全的列表行（新番列表/找番热度榜共用）：进入视口才拉 v0 详情回填简介/标签/NSFW
     SubjectDetailView.tsx # 统一详情容器（inline=展开行 / dialog=卡片弹窗）：字段/标签/「我的」折叠/简介/p1
-    SubjectGridCard.tsx  # 网格视图海报卡片（追番/新番共用，subject+caption props，点击开 dialog 详情）
+    SubjectDetailDialog.tsx # 应用内详情弹窗壳（Dialog + SubjectDetailView dialog，网格卡片/p1 关联·推荐行共用）
+    SubjectGridCard.tsx  # 网格视图海报卡片（追番/新番共用，subject+caption props，点击开详情弹窗）
     SubjectGroup.tsx     # 折叠分组容器（追番收藏夹分组 / 新番星期分组共用）
     ViewTabs.tsx         # 列表/网格视图切换 Tabs（追番/新番共用）
-    SubjectP1Sections.tsx # p1 扩展信息（角色 CV/关联条目/相关推荐，滚动可见才请求+骨架占位，失败静默隐藏）
-    CollectAction.tsx    # 收藏/移动/取消收藏下拉（xs~sm，乐观更新）
+    SubjectP1Sections.tsx # p1 扩展信息（角色 CV/关联条目/相关推荐，滚动可见才请求+骨架占位，失败静默隐藏；关联/推荐行点击应用内打开详情弹窗，hover 预取）
+    CollectAction.tsx    # 收藏/移动/取消收藏下拉（xs~sm，乐观更新；非 modal——嵌 modal 详情弹窗时避免连带关闭弹窗）
     ProgressEdit.tsx     # RateStars（我的评分）+ ProgressRows（我的进度：逐集/步进 + 书籍卷）
     BangumiLink.tsx      # Bangumi 外链（标题行内联图标模式）
     FadeImg.tsx / ErrorBoundary.tsx / SubjectSummary.tsx # 图片淡入 / 详情渲染兜底 / 简介排版
@@ -108,6 +109,6 @@ CI 在 `windows-latest`：安装依赖 → `npm run tauri build` → 打包便�
 - **204/空 body**：`bgmRequest` 统一用 `res.text()` 读取，空则返回 undefined，避免 JSON 解析报错
 - **SlimSubject vs Subject**：列表接口返回 SlimSubject（`short_summary`/顶层 `score`），完整 Subject 仅 `GET /v0/subjects/{id}` 有 `summary`/`rating.score`/`total_episodes`
 - **infobox 形状多态**：Bangumi 部分条目 infobox 缺 `values` 或整体非数组，渲染前必须容错（`infoboxValue`）；详情树包 ErrorBoundary，数据异常只降级单区块不白屏
-- **p1 私有接口**（next.bgm.tv，无官方文档）：解析宽松、失败静默降级（区块直接隐藏），缓存 1h（`lib/p1.ts`）
+- **p1 私有接口**（next.bgm.tv，无官方文档）：解析宽松、失败静默降级（区块直接隐藏），缓存 1h（`lib/p1.ts`）。**响应形状会漂移**：2026-09 实测 characters/relations/recs 由顶层数组变为 `{data:[...],total}` 包装、条目嵌套 `character`/`subject` 键、`relation` 变对象、CV 键 `cast`→`casts[].person`——`p1.ts` 统一解包归一化为扁平类型，渲染层与 `types/bgm.ts` 不感知，改形状时只动 p1.ts；部分条目数据本身为空（`{"data":[],"total":0}`），按空数据隐藏非异常（详见 `docs/API.md` p1 章节）
 - **收藏默认私密**：POST/PATCH collection 必带 `private:true`
 - **Bangumi API base**：`https://api.bgm.tv`（v0），OAuth 用 `https://bgm.tv`

@@ -8,7 +8,7 @@
 |---|---|---|---|
 | **v0 官方 API** | `https://api.bgm.tv` | `Authorization: Bearer <access_token>`（仅 `/calendar` 公开） | 搜索、条目详情、收藏 CRUD、剧集、用户资料 |
 | **OAuth 2.0** | `https://bgm.tv` | client_id / client_secret + 授权码 | v0 的认证前提：授权页跳转、code 换 token、refresh_token 刷新 |
-| **p1 私有 API** | `https://next.bgm.tv` | 无（热度榜等公开接口） | 收藏页空态「热门条目」热度榜 |
+| **p1 私有 API** | `https://next.bgm.tv` | 无（热度榜等公开接口） | 收藏页空态「热门条目」热度榜；详情页条目扩展（角色/关联/推荐） |
 | 图片 CDN | `https://lain.bgm.tv` | 无 | 条目封面 / 头像（API 响应返回 URL，`<img>` 直载，**不经 fetch**） |
 
 > - 运行时还有一个**本地**回环服务器（`http://localhost:7359-7369/callback`，Rust tiny_http）接收 OAuth 回调，不是外部服务。
@@ -223,7 +223,7 @@ body：`{ "type": 2 }` 看过 / `{ "type": 0 }` 未收藏。
 
 ## p1 私有 API（next.bgm.tv）
 
-> p1 是 Bangumi Web 新前端（`next.bgm.tv`）使用的后端接口族，**官方文档未公开**（`bangumi.github.io/api` 只覆盖 v0）。本应用只用其中的热度榜接口，其余仅记录供参考。**未文档化接口随时可能变更，接入需配套兜底方案**。
+> p1 是 Bangumi Web 新前端（`next.bgm.tv`）使用的后端接口族，**官方文档未公开**（`bangumi.github.io/api` 只覆盖 v0）。本应用使用其中的**热度榜**（找番空态）与**条目角色/关联/推荐**（详情页扩展区块）接口，其余仅记录供参考。**未文档化接口随时可能变更，接入需配套兜底方案**——2026-09 详情三接口就发生过响应形状变更（见下文），`src/lib/p1.ts` 统一解包归一化。
 
 ### 概览
 
@@ -292,6 +292,37 @@ Web 端「近期注目」榜（`bangumi.tv/anime/browser/?sort=trends`）的数�
 
 **兜底策略**：p1 失败时自动切 `/calendar`，按追番人数（`collection.doing`）降序取前 limit（`deriveCalendarTrending`，过滤热度 > 0）。`TrendingItem.source` 区分 `"trends"` / `"calendar"`，UI 可标注数据来源。
 
+### GET /p1/subjects/{id}/characters・relations・recs 条目扩展信息（在用）
+
+详情页底部「角色/CV / 关联条目 / 相关推荐」三区块的数据源（`src/lib/p1.ts`），公开接口无需鉴权。**2026-09 实测响应形状变更**：由「顶层数组」变为 `{data:[...], total}` 包装，且条目本身由扁平变为嵌套（`character` / `subject` 键）。`p1.ts` 统一解包并归一化为扁平类型（宽松兼容旧形状），渲染层不感知。
+
+**响应（三个接口同构）**
+
+```jsonc
+{
+  "data": [
+    // characters：角色 + CV（CV 在 casts[].person 下）
+    { "character": { "id": 302, "name": "碇シンジ", "nameCN": "碇真嗣", "images": { "medium": "...", "small": "...", "large": "..." } },
+      "casts": [ { "person": { "id": 75303, "name": "绪方惠美", "images": { /* … */ } } /*, lang 等 */ } ],
+      "type": 1, "order": 1 },
+    // relations：关联条目（relation 由旧版字符串变为对象，cn 优先）
+    { "subject": { "id": 114284, "name": "...", "nameCN": "...", "type": 2, "images": { "grid": "...", "medium": "..." }, "rating": { /* … */ } },
+      "relation": { "id": 1, "en": "Adaptation", "cn": "改编", "jp": "", "desc": "..." },
+      "order": 1 },
+    // recs：相关推荐（评分嵌套在 subject.rating.score）
+    { "subject": { "id": 6049, "name": "...", "nameCN": "...", "images": { /* … */ }, "rating": { "score": 8.86, /* … */ } },
+      "sim": 8, "count": 0 }
+  ],
+  "total": 20
+}
+```
+
+**实测结论**
+
+- 部分条目三接口均返回 `{"data":[],"total":0}`（服务端无数据），UI 按空数据隐藏区块，非异常
+- 数据完整度不稳定（如 EVA TV 版 characters/recs 为空、relations 有值），三区块需独立降级
+- 归一化映射：`character`/`subject` 内层 → 扁平条目；`casts[].person` → `cast[]`；`relation.cn||en` → `relation` 字符串；`subject.rating.score` → `score`
+
 ### 其余 p1 接口（参考，未使用）
 
 完整路径来自第三方生成的 p1 OpenAPI 规范（见文末）：
@@ -299,7 +330,7 @@ Web 端「近期注目」榜（`bangumi.tv/anime/browser/?sort=trends`）的数�
 | 分组 | 路径 |
 |---|---|
 | 热度 | `/p1/trending/subjects`、`/p1/trending/subjects/topics` |
-| 条目 | `/p1/subjects`、`/p1/subjects/{subjectID}`、`{id}/characters`、`{id}/comments`、`{id}/episodes`、`{id}/recs`（条目推荐）、`{id}/relations`、`{id}/reviews`、`{id}/staffs/persons`、`{id}/staffs/positions`、`{id}/topics`、`/p1/subjects/-/posts/{postID}`、`/p1/subjects/-/topics/{topicID}`(+`/replies`) |
+| 条目 | `/p1/subjects`、`/p1/subjects/{subjectID}`、`{id}/comments`、`{id}/episodes`、`{id}/reviews`、`{id}/staffs/persons`、`{id}/staffs/positions`、`{id}/topics`、`/p1/subjects/-/posts/{postID}`、`/p1/subjects/-/topics/{topicID}`(+`/replies`)（`{id}/characters`、`{id}/recs`、`{id}/relations` 已在用，见上文） |
 | 角色/人物 | `/p1/characters/{characterID}`(+`/casts`、`/collects`、`/comments`)、`/p1/persons/{personID}`(+`/casts`、`/collects`、`/comments`、`/works`) |
 | 收藏 | `/p1/collections/subjects`、`/p1/collections/subjects/{subjectID}`、`/p1/collections/characters`、`/p1/collections/persons`、`/p1/collections/indexes`、`/p1/collections/episodes/{episodeID}`、`/p1/users/{username}/collections/{subjects\|characters\|persons\|indexes}` |
 | 日历 | `/p1/calendar` |

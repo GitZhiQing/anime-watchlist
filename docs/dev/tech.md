@@ -23,60 +23,16 @@
 
 ## 2. 项目结构
 
+目录概览（权威的逐文件架构图以根目录 **`AGENTS.md`** 为准，此处不重复维护）：
+
 ```
 anime-watchlist/
-├── src/
-│   ├── components/
-│   │   ├── ui/                  # shadcn/ui 组件（button, card, dialog, dropdown-menu, input 等）
-│   │   ├── layout/
-│   │   │   ├── TitleBar.tsx     # 无边框自绘标题栏（data-tauri-drag-region）
-│   │   │   └── ThemeToggle.tsx  # 暗色/亮色模式切换
-│   │   ├── BangumiLink.tsx      # 跳转 Bangumi 条目页
-│   │   ├── CollectAction.tsx    # 收藏操作下拉
-│   │   ├── SubjectDetail.tsx    # 条目详情展开面板
-│   │   ├── SubjectRow.tsx       # 收藏列表行（封面/信息/操作）
-│   │   └── WatchlistToolbar.tsx # 追番页工具栏（快速导航/类型筛选/刷新/折叠）
-│   ├── lib/
-│   │   ├── auth.ts              # OAuth 认证流程
-│   │   ├── bgm.ts               # Bangumi HTTP 客户端（UA + Bearer + 401 刷新）
-│   │   ├── proxy.ts             # HTTP 代理配置（store→插件 proxy 选项 + 连通性测试）
-│   │   ├── queries.ts           # TanStack Query hooks
-│   │   ├── store.ts             # tauri-plugin-store 封装（凭据/令牌/代理/偏好）
-│   │   └── utils.ts             # cn() 工具函数
-│   ├── hooks/
-│   │   └── useAuthUser.ts       # 认证用户 hook
-│   ├── pages/
-│   │   ├── Watchlist.tsx         # 追番首页（5 个可折叠收藏夹）
-│   │   ├── Collection.tsx        # 搜索与收藏页面
-│   │   ├── Config.tsx            # OAuth 凭据配置与登录
-│   │   └── About.tsx             # 关于页（版本信息、免责声明、链接）
-│   ├── types/
-│   │   └── bgm.ts                # Bangumi 数据类型定义
-│   ├── App.tsx
-│   ├── main.tsx
-│   ├── globals.css               # Tailwind v4 + shadcn 主题变量
-│   └── vite-env.d.ts
-├── src-tauri/
-│   ├── src/
-│   │   ├── main.rs               # Rust 入口（windows_subsystem = "windows"）
-│   │   └── lib.rs                # 插件注册 + OAuth 本地回调服务器（tiny_http :7359）
-│   ├── capabilities/default.json # Tauri 2 ACL 权限
-│   ├── icons/                    # 应用图标（多尺寸）
-│   ├── Cargo.toml
-│   └── tauri.conf.json           # 应用元数据、窗口、打包配置
-├── scripts/
-│   ├── build-frontend.mjs        # tauri beforeBuildCommand：tsc + vite build，并把 dist 拷到 src-tauri/dist
-│   ├── tauri.mjs                 # npm run tauri 转发包装（build 成功后触发桌面快捷方式生成）
-│   ├── make-shortcut.mjs         # 桌面快捷方式 追番计划.lnk 生成（PowerShell WScript.Shell）
-│   └── release.mjs               # 版本更新 / 发布脚本
-├── .github/workflows/
-│   └── release.yml               # CI/CD（推送标签时构建并发布 Release）
-├── index.html                    # Vite 入口（含防闪烁主题脚本）
-├── vite.config.ts
-├── components.json               # shadcn/ui 配置
-├── tsconfig.json
-├── .nvmrc                        # Node.js 版本（CI 使用）
-└── package.json
+├── src/            # React 前端：components/（UI 组件）、lib/（API 客户端与 hooks）、
+│                   # hooks/、pages/（追番/新番/找番/配置/关于）、types/
+├── src-tauri/      # Tauri 2 壳：Rust 入口与 OAuth 回调服务器、ACL 权限、打包配置
+├── docs/           # 本文档目录
+├── scripts/        # 构建/发布/快捷方式脚本（build-frontend、tauri、make-shortcut、release）
+└── .github/workflows/release.yml   # 推送 v* tag 时 CI 构建并发布
 ```
 
 ---
@@ -126,7 +82,7 @@ shadcn 的主题通过 `<html>` 上的 `.dark` class 切换 CSS 变量。为防�
 
 ### 3.4 OAuth 认证
 
-Bangumi OAuth 2.0 流程：应用注册 → 获取授权码 → 换访问令牌。Rust 侧 `lib.rs` 使用 `tiny_http` 在本地 `127.0.0.1:7359` 启动一次性回调服务器接收授权码。前端 `src/lib/auth.ts` 编排完整流程，令牌通过 store 插件持久化。
+Bangumi OAuth 2.0 流程：应用注册 → 获取授权码 → 换访问令牌。Rust 侧 `lib.rs` 使用 `tiny_http` 在本地回环**动态端口（7359–7369，每端口先 `::1` 后 `127.0.0.1`）**启动一次性回调服务器接收授权码，全部被占才回退手动粘贴 code 模式。前端 `src/lib/auth.ts` 编排完整流程，令牌通过 store 插件持久化。
 
 ### 3.5 API 客户端
 
