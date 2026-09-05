@@ -117,7 +117,12 @@ export function CollectAction({ subjectId, subject, size = "sm" }: CollectAction
   }
 
   return (
-    <DropdownMenu>
+    // 非 modal：本组件嵌在 modal 详情弹窗头部。modal 下拉会把弹窗内容压成
+    // pointer-events:none，点击弹窗任意处（含收藏按钮本身）都穿透到遮罩——
+    // 下拉在 pointerdown 关闭并退出层栈，弹窗延迟到 click 的 dismiss 判定时
+    // 已重新成为最高层而被放行，导致详情卡片被连带关闭（Radix #3346 时序）。
+    // 非 modal 下无此穿透，点击弹窗内部只关下拉。
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size={size} disabled={busy} className="gap-1">
           {busy ? (
