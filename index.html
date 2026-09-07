@@ -3,6 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- 封面/头像 CDN 预连接：冷启动首屏省 DNS+TCP+TLS（API 走 Rust 侧不经 webview，无需预连接） -->
+    <link rel="preconnect" href="https://lain.bgm.tv" />
+    <link rel="dns-prefetch" href="https://lain.bgm.tv" />
     <link rel="icon" type="image/png" href="/logo.png" />
     <title>追番计划</title>
     <script>

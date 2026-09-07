@@ -19,6 +19,7 @@ export function FadeImg({
   return (
     <img
       loading="lazy"
+      decoding="async"
       {...props}
       ref={ref}
       onLoad={(e) => {

@@ -182,6 +182,7 @@ function CharactersSection({ data }: { data: P1Character[] }) {
                       src={img}
                       alt={ch.name}
                       loading="lazy"
+                      decoding="async"
                       // 3:4 竖版固定框：竖长图裁顶部（保留脸部），横宽图垂直放满、水平居中
                       className="aspect-[3/4] w-16 rounded-md object-cover object-top transition-opacity hover:opacity-80"
                     />
