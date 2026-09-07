@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { Check, ChevronDown, Filter, Flame, Loader2 } from "lucide-react";
+import { useRef, useState } from "react";
+import { Check, ChevronDown, Filter, Flame, Loader2, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -11,12 +12,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { PageLayout } from "@/components/layout/PageLayout";
-import { SubjectRow } from "@/components/SubjectRow";
 import { EnrichedSubjectRow } from "@/components/EnrichedSubjectRow";
 import { useSearchSubjects, useTrendingFeed } from "@/lib/queries";
 import { SUBJECT_LABELS, SUBJECT_TYPES, SubjectType } from "@/types/bgm";
 import { cn } from "@/lib/utils";
 import { useAuthUser } from "@/hooks/useAuthUser";
+import { usePersistentState } from "@/hooks/usePersistentState";
+
+const MAX_HISTORY = 10;
 
 /** 行骨架（搜索中/热度榜加载中） */
 function RowSkeletons({ rows = 4 }: { rows?: number }) {
@@ -102,6 +105,13 @@ export function Collection({ visited = true }: CollectionProps) {
   const { user } = useAuthUser();
   const [keyword, setKeyword] = useState("");
   const [submitted, setSubmitted] = useState<string | null>(null);
+  // 搜索历史：最新在前去重，持久化到 store；badge 点击填入、X 单删、「清空」全删
+  const [history, setHistory] = usePersistentState<string[]>(
+    "prefs.collection.searchHistory",
+    [],
+  );
+  const [historyOpen, setHistoryOpen] = useState(true);
+  const inputRef = useRef<HTMLInputElement>(null);
   // 条目类型过滤，默认动画
   const [subjectType, setSubjectType] = useState<SubjectType | undefined>(
     SubjectType.Anime,
@@ -125,12 +135,23 @@ export function Collection({ visited = true }: CollectionProps) {
           className="flex gap-2"
           onSubmit={(e) => {
             e.preventDefault();
-            setSubmitted(keyword.trim() || null);
+            const kw = keyword.trim();
+            setSubmitted(kw || null);
+            if (kw)
+              setHistory((prev) =>
+                [kw, ...prev.filter((h) => h !== kw)].slice(0, MAX_HISTORY),
+              );
           }}
         >
           <Input
+            ref={inputRef}
             value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
+            onChange={(e) => {
+              const v = e.target.value;
+              setKeyword(v);
+              // 清空搜索框后回到初始态（热度榜）
+              if (!v.trim()) setSubmitted(null);
+            }}
             placeholder="输入条目名称搜索"
             data-search-input
             className="flex-1"
@@ -176,6 +197,67 @@ export function Collection({ visited = true }: CollectionProps) {
           </Button>
         </form>
 
+        {history.length > 0 && (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setHistoryOpen((o) => !o)}
+                title={historyOpen ? "折叠" : "展开"}
+                className="flex cursor-pointer items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <ChevronDown
+                  className={cn(
+                    "size-3.5 transition-transform",
+                    !historyOpen && "-rotate-90",
+                  )}
+                />
+                搜索历史
+              </button>
+              <button
+                type="button"
+                onClick={() => setHistory([])}
+                className="cursor-pointer text-xs text-muted-foreground transition-colors hover:text-destructive"
+              >
+                清空
+              </button>
+            </div>
+            {historyOpen && (
+              <div className="flex flex-wrap gap-1.5">
+                {history.map((h) => (
+                  <Badge
+                    key={h}
+                    variant="secondary"
+                    className="max-w-full gap-0.5 pr-0.5 font-normal"
+                  >
+                    <button
+                      type="button"
+                      className="max-w-40 cursor-pointer truncate"
+                      title={`填入「${h}」`}
+                      onClick={() => {
+                        setKeyword(h);
+                        inputRef.current?.focus();
+                      }}
+                    >
+                      {h}
+                    </button>
+                    <button
+                      type="button"
+                      title="删除该条历史"
+                      className="cursor-pointer rounded-full p-0.5 transition-colors hover:bg-destructive/10 hover:text-destructive"
+                      onClick={() =>
+                        setHistory((prev) => prev.filter((x) => x !== h))
+                      }
+                    >
+                      <X />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {submitted ? (
           <>
             {!isFetching && !error && results.length === 0 && (
@@ -194,7 +276,7 @@ export function Collection({ visited = true }: CollectionProps) {
             )}
             <div className="space-y-1">
               {results.map((s) => (
-                <SubjectRow key={s.id} subject={s} />
+                <EnrichedSubjectRow key={s.id} subject={s} />
               ))}
             </div>
             {hasNextPage && (
