@@ -24,7 +24,6 @@ import {
   searchSubjects,
   setCollection,
   patchCollection,
-  deleteCollection,
   getCalendar,
   getEpisodes,
   type CollectionPatch,
@@ -277,7 +276,10 @@ export function useSetCollection() {
           private: true,
           subject,
         };
+        // 服务端条目只归入其 subjectType 对应的一个列表，仅插该缓存；
+        // 插进全部类型会让「全部」视图 flatMap 后渲染出重复卡片
         for (const [key, data] of lists) {
+          if (key[2] !== subject.type) continue;
           if (
             Array.isArray(data) &&
             !data.some((c) => c.subject_id === subjectId)
@@ -321,40 +323,6 @@ export function usePatchCollection() {
           subjectId,
           patch as Partial<UserCollection>,
         );
-      }
-      return { lists, prevSingle, singleKey };
-    },
-    onSuccess: (_d, { username, subjectId }) => settle(username, subjectId),
-    onError: (_e, _vars, ctx) => {
-      if (ctx) rollbackCollections(qc, ctx.lists, ctx.singleKey, ctx.prevSingle);
-    },
-  });
-}
-
-/** 取消收藏。乐观从列表/单条缓存移除，失败回滚。 */
-export function useDeleteCollection() {
-  const qc = useQueryClient();
-  const settle = useSettleCollections();
-  return useMutation({
-    mutationFn: ({ subjectId }: CollectionMutateVars) =>
-      deleteCollection(subjectId),
-    onMutate: async ({ subjectId, username }) => {
-      await qc.cancelQueries({ queryKey: ["collection", username, subjectId] });
-      const lists = qc.getQueriesData<UserCollection[]>({
-        queryKey: ["collections", username],
-      });
-      const singleKey = ["collection", username, subjectId] as const;
-      const prevSingle = qc.getQueryData<UserCollection | null>(singleKey);
-      if (username) {
-        for (const [key, data] of lists) {
-          if (Array.isArray(data)) {
-            qc.setQueryData(
-              key,
-              data.filter((c) => c.subject_id !== subjectId),
-            );
-          }
-        }
-        qc.setQueryData(singleKey, null);
       }
       return { lists, prevSingle, singleKey };
     },

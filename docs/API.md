@@ -130,7 +130,7 @@ token 响应：
 
 ## v0 官方 API（api.bgm.tv）
 
-### 在用端点总表（11 个）
+### 在用端点总表（10 个）
 
 | # | 方法 | 路径 | 用途 | 认证 | 本应用封装 |
 |---|---|---|---|---|---|
@@ -142,9 +142,8 @@ token 响应：
 | 6 | GET | `/v0/users/{username}/collections/{subject_id}` | 单条收藏状态 | Bearer | `getUserCollection` |
 | 7 | POST | `/v0/users/-/collections/{subject_id}` | 新增收藏 | Bearer | `setCollection` |
 | 8 | PATCH | `/v0/users/-/collections/{subject_id}` | 修改收藏（夹 / 进度 / 评分） | Bearer | `patchCollection` |
-| 9 | DELETE | `/v0/users/-/collections/{subject_id}` | 取消收藏 | Bearer | `deleteCollection` |
-| 10 | GET | `/v0/episodes` | 条目剧集列表（分页） | Bearer | `getEpisodes` |
-| 11 | PUT | `/v0/users/-/collections/-/episodes/{episode_id}` | 标记单话看过 / 未看 | Bearer | `setEpisodeWatched` |
+| 9 | GET | `/v0/episodes` | 条目剧集列表（分页） | Bearer | `getEpisodes` |
+| 10 | PUT | `/v0/users/-/collections/-/episodes/{episode_id}` | 标记单话看过 / 未看 | Bearer | `setEpisodeWatched` |
 
 > 路径中的 `-` 代表「当前认证用户」，本应用一律用 `/v0/users/-/…`，不写死 username。
 
@@ -197,9 +196,7 @@ body 为 `CollectionPatch` 子集：`type`（收藏夹）、`ep_status`、`vol_s
 
 > 官方文档警告「直接修改剧集条目完成度只能用于书籍类条目」，**实测**修改收藏夹与动画进度均可用。**改非 type 字段时也必须带 `private`**（服务端要求）。
 
-#### DELETE /v0/users/-/collections/{subject_id} 取消收藏
-
-204 无内容。
+> **没有「取消收藏」端点**：官方 OpenAPI 对该路径只定义 POST/PATCH，服务端 routes.go 中条目/人物/角色的 DELETE 均因 `TODO: wait for soft delete` 未实现（实测返回框架默认 404「This is default response」）。本应用因此**不提供取消收藏功能**，勿凭文档添加 DELETE 调用。
 
 #### GET /v0/episodes 剧集列表
 

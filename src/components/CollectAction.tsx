@@ -1,12 +1,10 @@
-import { useState } from "react";
-import { Check, ChevronDown, Loader2, Plus, Trash2 } from "lucide-react";
+import { Check, ChevronDown, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuthUser } from "@/hooks/useAuthUser";
@@ -14,7 +12,6 @@ import {
   useUserCollectionSmart,
   useSetCollection,
   usePatchCollection,
-  useDeleteCollection,
 } from "@/lib/queries";
 import { COLLECTION_LABELS, COLLECTION_ORDER } from "@/types/bgm";
 import type { CollectionType, SlimSubject } from "@/types/bgm";
@@ -32,6 +29,7 @@ interface CollectActionProps {
  * （useUserCollectionSmart，命中零请求），未命中才回退单条 GET：
  * 已收藏则显示当前收藏夹（带 ✓），未收藏则显示「+ 收藏」。
  * 选中夹：未收藏走 POST 新增，已收藏走 PATCH 改夹；乐观更新缓存，失败自动回滚。
+ * 不提供取消收藏：Bangumi v0 API 无此端点（见 docs/API.md「在用端点总表」注记）。
  */
 export function CollectAction({ subjectId, subject, size = "sm" }: CollectActionProps) {
   const { user } = useAuthUser();
@@ -42,9 +40,7 @@ export function CollectAction({ subjectId, subject, size = "sm" }: CollectAction
   );
   const setMut = useSetCollection();
   const patchMut = usePatchCollection();
-  const deleteMut = useDeleteCollection();
-  const busy = setMut.isPending || patchMut.isPending || deleteMut.isPending;
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const busy = setMut.isPending || patchMut.isPending;
 
   const current = data ? (data.type as CollectionType) : null;
 
@@ -75,24 +71,6 @@ export function CollectAction({ subjectId, subject, size = "sm" }: CollectAction
         },
       );
     }
-  }
-
-  function handleDelete() {
-    // 两步确认：第一次点击进入确认态，第二次才真正删除
-    if (!confirmDelete) {
-      setConfirmDelete(true);
-      return;
-    }
-    deleteMut.mutate(
-      { subjectId, username },
-      {
-        onSuccess: () => toast.success("已取消收藏"),
-        onError: (e) =>
-          toast.error("取消收藏失败", {
-            description: e instanceof Error ? e.message : String(e),
-          }),
-      },
-    );
   }
 
   if (isLoading) {
@@ -145,19 +123,6 @@ export function CollectAction({ subjectId, subject, size = "sm" }: CollectAction
             {COLLECTION_LABELS[t]}
           </DropdownMenuItem>
         ))}
-        {current !== null && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              variant="destructive"
-              onClick={handleDelete}
-              onMouseLeave={() => setConfirmDelete(false)}
-            >
-              <Trash2 className="size-3.5" />
-              {confirmDelete ? "确认取消收藏？" : "取消收藏"}
-            </DropdownMenuItem>
-          </>
-        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

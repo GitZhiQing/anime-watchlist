@@ -323,7 +323,13 @@ export async function getAllUserCollections(
     (offset) => getUserCollections(username, subjectType, pageSize, offset),
     PAGE_CONCURRENCY,
   );
-  return [...first.data, ...rest.flatMap((p) => p.data)];
+  // 并发翻页期间服务端列表变动会使 offset 平移、同一条目跨页重复，按 subject_id 去重
+  const seen = new Set<number>();
+  return [...first.data, ...rest.flatMap((p) => p.data)].filter((c) => {
+    if (seen.has(c.subject_id)) return false;
+    seen.add(c.subject_id);
+    return true;
+  });
 }
 
 /**
@@ -373,13 +379,6 @@ export function patchCollection(
   return bgmRequest<void>(`/v0/users/-/collections/${subjectId}`, {
     method: "PATCH",
     body: { ...patch, private: true },
-  });
-}
-
-/** 取消收藏（DELETE）。 */
-export function deleteCollection(subjectId: number): Promise<void> {
-  return bgmRequest<void>(`/v0/users/-/collections/${subjectId}`, {
-    method: "DELETE",
   });
 }
 
