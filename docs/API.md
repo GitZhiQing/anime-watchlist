@@ -283,9 +283,19 @@ Web 端「近期注目」榜（`bangumi.tv/anime/browser/?sort=trends`）的数�
 | `metaTags` | `tags` | 映射为 `{ name, count: 0 }` |
 | `rating.score` | `score` | 无 `rating` 时置 0 |
 | `rating.rank` | `rank` | |
-| `images` | `images` | 结构相同，直接透传 |
+| `images` | `images` | 键结构相同**但同名键尺寸不同**（见下方实测），透传后需经 `mergeSubjectDetail` 回填 v0 `images` 修正 |
 | — | `short_summary` | **p1 无此字段**，置空字符串 |
 | — | `date` | **p1 无此字段**，热度榜行不显示放送日期 |
+
+**同名 `images` 键、不同尺寸（2026-09 实测）**
+
+| 来源 | `medium` | `small` | `large` |
+|---|---|---|---|
+| v0 `GET /v0/subjects/{id}` | `lain.bgm.tv/r/800/…`（**800px，弹窗大图基准**） | `r/200` | 原图（实测 1200px） |
+| p1 `/p1/trending/subjects` | `lain.bgm.tv/r/200/…`（200px 缩略图） | `r/100` | 原图 |
+| calendar（legacy 经典路径） | `pic/cover/m/…`（实测仅 100×142） | `pic/cover/s/…` | `pic/cover/l/…` |
+
+含义：封面弹窗统一取 `images.medium`，但热度榜（p1）与日历兜底行透传的 `medium` 是缩略图尺寸，点开会「仍然是缩略图」。`EnrichedSubjectRow` 的 `mergeSubjectDetail` 已把 v0 详情的 `images` 回填进列表行统一修正（详情本就因补全简介而拉取，零额外请求；详情拉取失败时降级保持原样）。
 
 **兜底策略**：p1 失败时自动切 `/calendar`，按追番人数（`collection.doing`）降序取前 limit（`deriveCalendarTrending`，过滤热度 > 0）。`TrendingItem.source` 区分 `"trends"` / `"calendar"`，UI 可标注数据来源。
 

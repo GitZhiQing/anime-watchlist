@@ -22,7 +22,7 @@ src/
   globals.css           # Tailwind v4 + shadcn 主题变量 + 折叠动画 + 滚动条样式
   components/
     layout/             # TitleBar（无边框窗口控件）、ThemeToggle（亮/暗/跟随系统三态）
-    ui/                 # shadcn 组件（CLI 生成）
+    ui/                 # shadcn 组件（CLI 生成；badge.tsx 为手写，内容对齐官方源码——本机 shell fnm 环境问题致 CLI 不可用时手写补齐）
     SubjectRow.tsx      # 列表行：标题行（xs Bangumi 图标 + 收藏下拉）+ 可展开详情 + 搜索高亮
     EnrichedSubjectRow.tsx # 带详情补全的列表行（新番列表/找番热度榜/找番搜索结果共用）：进入视口才拉 v0 详情回填简介/标签/NSFW
     SubjectDetailView.tsx # 统一详情容器（inline=展开行 / dialog=卡片弹窗）：字段/标签/「我的」折叠/简介/p1
@@ -68,7 +68,8 @@ docs/                   # 文档（API.md 接口总文档 + dev/ 开发文档，
 - **追番/新番视图统一**：两页共用 `ViewTabs`（列表/网格切换，位于搜索框右侧）与 `SubjectGroup`（折叠分组容器）。新番页默认列表视图，两种视图都是周一→周日 7 个分组（旧存值 `prefs.calendar.viewMode="table"` 归一化为网格）；网格卡片共用 `SubjectGridCard`（`subject` + `caption` props，追番传进度、新番传在看人数）
 - **列表信息补全**：`/calendar`、p1 热度榜、搜索结果等列表源缺简介/标签/NSFW（实测 calendar summary 全空，搜索的 tags 常为空、`short_summary` 截短）；`EnrichedSubjectRow`（新番列表行、找番热度榜、找番搜索结果共用）经 `useInViewOnce` 进入视口后才逐行调 `GET /v0/subjects/{id}` 回填（`mergeSubjectDetail`），与 hover 预取/展开详情共享 `["subject", id]` 30min 缓存，失败静默降级；网格视图不做补全（卡片无简介/标签）
 - **追番排序**：排序键 默认/收藏/评分/名称/更新（`collect`=条目收藏人数 `collection_total`，接口可能缺省按 0）+ 升降序 toggle。持久化 `prefs.watchlist.sortReversed`（布尔，以各键自然方向为基准取反），老用户已有排序行为不变；「默认」倒序 = 接口原序整体反转
-- **封面**：列表用 `images.small`（`object-contain`，容器比例 `aspect-[5/7]`），弹大图用 `images.medium`
+- **找番搜索历史**：提交关键词即记录——最新在前、去重、上限 10 条，持久化 `prefs.collection.searchHistory`（Store）；搜索框下方 badge 区：点击 badge 填入搜索框、× 删单条、标题行可折叠、「清空」全清；清空搜索框即回热度榜初始态（`submitted` 置 null）
+- **封面**：列表用 `images.small`（`object-contain`，容器比例 `aspect-[5/7]`），弹大图用 `images.medium`。**medium 实际尺寸随数据源漂移**（2026-09 实测：v0=r/800、p1 热度榜=r/200、calendar 经典 `m/` 路径≈100px）——列表行由 `mergeSubjectDetail` 统一回填 v0 `images`，保证新番/找番/热度榜行的弹窗大图清晰；`index.html` 对封面 CDN `lain.bgm.tv` 做 preconnect（API 走 Rust 侧不经 webview，无需预连接），`FadeImg` 默认 `loading="lazy" decoding="async"`（WebView2 会因批量 lazy 封面打 `[Intervention]` INFO 日志，属正常机制回执勿当报错）
 
 ## 版本更新与发布（两件事）
 
@@ -96,6 +97,8 @@ docs/                   # 文档（API.md 接口总文档 + dev/ 开发文档，
   ```
 
   已用 `npm run bump` 更新过 → 直接 `npm run release X.Y.Z`（脚本只打 tag + 推送）。
+
+**发版前置检查**：发版前先确认本地提交已全部推送——`git fetch` 后 `git status -sb` 应无 ahead，有未推送提交先 `git push`。tag 打在本地提交上，未推送的提交不会进 CI 构建，也不会进自动生成的 release notes。
 
 **CI 触发**：`.github/workflows/release.yml` 仅在推送 `v*` tag 时触发（`on: push: tags: v*`），推 `main` 不会触发。**发布 = 打 tag 推送，不是推 main。**
 

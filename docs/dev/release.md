@@ -50,6 +50,16 @@ npm run bump minor        # 1.2.0 → 1.3.0
 
 ### 发布版本（打 tag 推送触发 CI）
 
+**发版前置检查**：确认本地所有提交已推送——
+
+```bash
+git fetch
+git status -sb                        # ## main...origin/main 后无 [ahead N]
+git log --oneline origin/main..HEAD   # 空输出 = 无未推送提交
+```
+
+有未推送提交先 `git push`。tag 打在本地提交上，未推送的提交不会进 CI 构建，也不会进自动生成的 release notes。
+
 ```bash
 npm run release minor     # 一步到位：bump + 提交 + 打 tag + 推送
 # 或已用 bump 更新过版本：
@@ -74,7 +84,7 @@ gh release view v1.3.0                 # 确认 Release 已发布
 | 用户的话 | 动作 |
 |---|---|
 | 「更新版本」「升到 X.Y.Z」 | `npm run bump <bump>`，**不打 tag 不 push** |
-| 「发布」「发版」「推送」「打 tag」 | 已 bump 过 → `npm run release X.Y.Z`；未 bump → `npm run release <bump>`；随后 `gh run list` 验证 |
+| 「发布」「发版」「推送」「打 tag」 | **先做发版前置检查**（确认已全部推送）；已 bump 过 → `npm run release X.Y.Z`；未 bump → `npm run release <bump>`；随后 `gh run list` 验证 |
 | 只说「提交」 | 只 commit，不 push（版本已改则提交版本文件） |
 
 **常见坑**：改了版本号、提交了、推了 `main`，但 CI 没跑 —— 因为没打 tag。**发布 = 打 tag 推送，不是推 main。**
