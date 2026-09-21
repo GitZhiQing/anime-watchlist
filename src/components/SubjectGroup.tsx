@@ -22,7 +22,8 @@ interface SubjectGroupProps {
   children: ReactNode;
 }
 
-/** 折叠分组容器：追番页收藏夹分组与新番页星期分组共用的统一样式 */
+/** 折叠分组容器：追番页收藏夹分组与新番页星期分组共用的统一样式。
+ *  无边框：分组头为柔和底色圆角条，内容区靠留白与底色区分。 */
 export function SubjectGroup({
   id,
   title,
@@ -33,15 +34,10 @@ export function SubjectGroup({
   children,
 }: SubjectGroupProps) {
   return (
-    <Collapsible
-      id={id}
-      open={open}
-      onOpenChange={onOpenChange}
-      className="rounded-lg border border-border"
-    >
+    <Collapsible id={id} open={open} onOpenChange={onOpenChange}>
       <CollapsibleTrigger
         className={cn(
-          "flex w-full items-center justify-between px-4 py-2.5 text-sm font-medium hover:bg-muted/50",
+          "flex w-full cursor-pointer items-center justify-between rounded-md bg-muted/50 px-3 py-2 text-sm font-medium transition-colors hover:bg-muted/70",
           headerClassName,
         )}
       >

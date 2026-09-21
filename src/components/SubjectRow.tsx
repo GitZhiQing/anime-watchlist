@@ -240,7 +240,7 @@ export function SubjectRow({
         </div>
       </div>
       <CollapsibleContent>
-        <div className="border-t border-border px-4 pb-4 pt-2">
+        <div className="px-4 pb-4 pt-3">
           <SubjectDetailView subjectId={subject.id} variant="inline" subject={subject} />
         </div>
       </CollapsibleContent>

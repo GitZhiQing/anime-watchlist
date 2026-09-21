@@ -90,7 +90,7 @@ function Watchlist({
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       {COLLECTION_ORDER.map((type) => {
         const items = groups[type] ?? [];
         const open = openMap[type];
@@ -106,7 +106,7 @@ function Watchlist({
             {items.length === 0 ? (
               <EmptyGroup type={type as CollectionType} />
             ) : viewMode === "grid" ? (
-              <div className="border-t border-border p-2">
+              <div className="p-2">
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-3">
                   {items.map((c) => (
                     <SubjectGridCard
@@ -124,7 +124,7 @@ function Watchlist({
                 </div>
               </div>
             ) : (
-              <div className="border-t border-border p-1">
+              <div className="p-1">
                 {items.map((c) => (
                   <SubjectRow
                     key={c.subject_id}
@@ -306,14 +306,14 @@ export function WatchlistPage({
 /** 追番页首屏骨架：五个分组头 + 每组两行占位 */
 function WatchlistSkeleton() {
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       {COLLECTION_ORDER.map((type) => (
-        <div key={type} className="rounded-lg border border-border">
-          <div className="flex items-center justify-between px-4 py-2.5">
+        <div key={type}>
+          <div className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2">
             <div className="h-4 w-24 animate-pulse rounded bg-muted" />
             <div className="h-4 w-4 animate-pulse rounded bg-muted" />
           </div>
-          <div className="space-y-2 border-t border-border p-2">
+          <div className="space-y-2 p-2">
             {[0, 1].map((i) => (
               <div key={i} className="flex animate-pulse gap-3 rounded-md p-2">
                 <div className="aspect-[5/7] w-16 shrink-0 rounded bg-muted" />
