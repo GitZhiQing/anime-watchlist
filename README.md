@@ -2,7 +2,7 @@
 
 # 追番计划
 
-基于 [Bangumi](https://bgm.tv) API 的 Windows 桌面端追番记录应用。
+基于 [Bangumi](https://bgm.tv) API 的 Windows 桌面端追番记录应用。数据全部存于 Bangumi 账户，本地不落库，仅保存凭据与界面偏好。
 
 <p align="left">
   <img src="https://img.shields.io/badge/Tauri-2-FFC131?logo=tauri&logoColor=white&style=flat-square" />
@@ -13,31 +13,44 @@
   <img src="https://img.shields.io/badge/TanStack_Query-FF4154?logo=reactquery&logoColor=white&style=flat-square" />
 </p>
 
-<p align="center">
-  <table>
-    <tr>
-      <td><img src="images/追番.webp" alt="追番" /></td>
-      <td><img src="images/收藏.webp" alt="收藏" /></td>
-    </tr>
-    <tr>
-      <td align="center"><sub>追番</sub></td>
-      <td align="center"><sub>收藏</sub></td>
-    </tr>
-  </table>
-</p>
+## 功能
 
-<p align="center">
-  <table>
-    <tr>
-      <td><img src="images/新番-表格.webp" alt="新番-表格" /></td>
-      <td><img src="images/新番-列表.webp" alt="新番-列表" /></td>
-    </tr>
-    <tr>
-      <td align="center"><sub>新番-表格</sub></td>
-      <td align="center"><sub>新番-列表</sub></td>
-    </tr>
-  </table>
-</p>
+- **追番**：动画、书籍、音乐、游戏、三次元五类收藏，列表 / 网格双视图，支持搜索、类型筛选与多维排序
+- **新番**：本季每日放送日历，可回看 2015 年以来的历史季度与已公布的未来季度
+- **找番**：热度榜 + 关键词搜索，带搜索历史
+- **条目详情**：评分、观看进度、备注，以及角色 CV、关联条目、相关推荐
+- **其他**：亮 / 暗 / 跟随系统主题，HTTP 代理，收藏数据一键导出 JSON 备份
+
+## 界面
+
+**追番 —— 我的收藏**
+
+|   视图   |  视图 + 详情  |
+| :------: | :----------: |
+| ![追番-网格](image/README/追番-网格.webp) | ![追番-网格-详情](image/README/追番-网格-详情.webp) |
+| ![追番-列表](image/README/追番-列表.webp) | ![追番-列表-详情](image/README/追番-列表-详情.webp) |
+
+**新番 —— 每日放送与季度浏览**
+
+|  网格视图  |  列表视图  |
+| :-------: | :-------: |
+| ![新番-网格](image/README/新番-网格.webp) | ![新番-列表](image/README/新番-列表.webp) |
+
+**找番 —— 热度榜与搜索**
+
+|  热度榜  |   搜索   |
+| :-----: | :------: |
+| ![找番-热门](image/README/找番-热门.webp) | ![找番-搜索](image/README/找番-搜索.webp) |
+
+**配置**
+
+|   未登录   |   已登录   |
+| :-------: | :-------: |
+| ![配置-未登录](image/README/配置-未登录.webp) | ![配置-已登录](image/README/配置-已登录.webp) |
+
+## 下载
+
+到 [Releases](https://github.com/GitZhiQing/anime-watchlist/releases) 下载最新的便携版压缩包，解压即可运行，无需安装。首次使用需自建 Bangumi 应用凭据，见下节。
 
 ## 首次使用
 
@@ -55,7 +68,8 @@
 ```bash
 npm install
 npm run tauri dev    # 开发模式
-npm run tauri build  # 打包 Windows 安装包
+npm run tauri build  # 构建便携版 exe
+npx tsc --noEmit     # 类型检查
 ```
 
 ## 说明
