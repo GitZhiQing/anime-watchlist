@@ -26,7 +26,7 @@ export function SubjectDetailDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={false}
-        className="flex h-[80vh] max-h-[80vh] w-[1080px] max-w-[92vw] flex-col overflow-hidden p-4 sm:max-w-[1080px]"
+        className="flex h-[80vh] max-h-[80vh] w-[960px] max-w-[92vw] flex-col overflow-hidden p-4 sm:max-w-[960px]"
       >
         <DialogTitle className="sr-only">
           {title ?? `#${subjectId}`} 详情
