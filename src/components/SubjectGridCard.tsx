@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { Star } from "lucide-react";
 import { SubjectDetailDialog } from "@/components/SubjectDetailDialog";
 import { NSFWBadge } from "@/components/SubjectDetailView";
 import { FadeImg } from "@/components/FadeImg";
 import { usePrefetchSubject } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 import type { SlimSubject } from "@/types/bgm";
+import { SubjectType, SUBJECT_LABELS, SUBJECT_BADGE_STYLES } from "@/types/bgm";
 
 interface SubjectGridCardProps {
   subject: SlimSubject;
@@ -62,12 +62,16 @@ export function SubjectGridCard({ subject, caption, className }: SubjectGridCard
             </span>
           )}
 
-          {/* 顶部左：NSFW；顶部右：评分 */}
+          {/* 顶部左：R18（封面已模糊）；顶部右：条目类型徽标 */}
           {s.nsfw && <NSFWBadge className="absolute top-1 left-1" />}
-          {!!s.score && s.score > 0 && (
-            <span className="absolute top-1 right-1 inline-flex items-center gap-0.5 rounded bg-black/60 px-1 py-0.5 text-[10px] leading-none text-amber-400">
-              <Star className="size-2.5 fill-current" />
-              {s.score.toFixed(1)}
+          {SUBJECT_LABELS[s.type as SubjectType] && (
+            <span
+              className={cn(
+                "absolute top-1 right-1 rounded px-1 py-0.5 text-[10px] leading-none",
+                SUBJECT_BADGE_STYLES[s.type as SubjectType],
+              )}
+            >
+              {SUBJECT_LABELS[s.type as SubjectType]}
             </span>
           )}
 

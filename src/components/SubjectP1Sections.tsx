@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { Star } from "lucide-react";
 import {
   usePrefetchSubject,
   useSubjectCharacters,
@@ -16,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { useInViewOnce } from "@/hooks/useInViewOnce";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import type {
   P1Character,
   P1RecItem,
@@ -23,6 +23,7 @@ import type {
   SlimSubject,
   SubjectImages,
 } from "@/types/bgm";
+import { SubjectType, SUBJECT_LABELS, SUBJECT_BADGE_STYLES } from "@/types/bgm";
 
 /**
  * 详情底部的 p1 扩展信息：角色/CV、关联条目、相关推荐。
@@ -233,7 +234,7 @@ function P1SubjectCard({
     images?: SubjectImages;
     score?: number;
   };
-  /** 封面右上角文字角标（关联条目的关系文本），评分角标由 score 自动渲染 */
+  /** 封面右上角文字角标（关联条目的关系文本）；条目类型徽标紧随其后 */
   badge?: string;
 }) {
   const title = r.nameCN || r.name || "";
@@ -265,7 +266,8 @@ function P1SubjectCard({
             暂无封面
           </span>
         )}
-        {(badge || (!!r.score && r.score > 0)) && (
+        {/* 右上：关系角标 + 条目类型徽标（原评分角标位置） */}
+        {(badge || (r.type !== undefined && SUBJECT_LABELS[r.type as SubjectType])) && (
           <div className="absolute top-1 right-1 flex max-w-[calc(100%-0.5rem)] items-start justify-end gap-1">
             {badge && (
               <span
@@ -275,10 +277,14 @@ function P1SubjectCard({
                 {badge}
               </span>
             )}
-            {!!r.score && r.score > 0 && (
-              <span className="inline-flex shrink-0 items-center gap-0.5 rounded bg-black/60 px-1 py-0.5 text-[10px] leading-none text-amber-400">
-                <Star className="size-2.5 fill-current" />
-                {r.score.toFixed(1)}
+            {r.type !== undefined && SUBJECT_LABELS[r.type as SubjectType] && (
+              <span
+                className={cn(
+                  "shrink-0 rounded px-1 py-0.5 text-[10px] leading-none",
+                  SUBJECT_BADGE_STYLES[r.type as SubjectType],
+                )}
+              >
+                {SUBJECT_LABELS[r.type as SubjectType]}
               </span>
             )}
           </div>
