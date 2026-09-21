@@ -31,6 +31,9 @@ export const StoreKeys = {
   // 是否强制固定回调端口 7359（默认 false，开启动态端口）。用户已登记 7359 或
   // Bangumi 收紧动态校验时启用。
   oauthFixedPort: "oauth_fixed_port",
+  // 数据备份：记住的备份目录与上次备份完成时间（epoch ms）
+  backupDir: "prefs.backup.dir",
+  backupLastTime: "prefs.backup.last_time",
 } as const;
 
 export async function getStore<T>(key: string): Promise<T | undefined> {

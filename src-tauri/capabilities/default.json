@@ -6,7 +6,12 @@
   "permissions": [
     "core:default",
     "opener:default",
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [{ "path": "**" }]
+    },
     "store:default",
+    "dialog:default",
     {
       "identifier": "http:default",
       "allow": [

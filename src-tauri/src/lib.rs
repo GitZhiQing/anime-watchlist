@@ -318,16 +318,25 @@ fn percent_decode(input: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
+/// 数据备份：把前端传入的内容写入用户通过目录对话框选定的路径。
+/// 应用自有命令不走 capability 权限面，避免为一次写盘引入整个 fs 插件。
+#[tauri::command]
+fn write_text_file(path: String, contents: String) -> Result<(), String> {
+    std::fs::write(&path, contents.as_bytes()).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage::<OauthState>(Mutex::new(None))
         .invoke_handler(tauri::generate_handler![
             start_oauth_server,
-            stop_oauth_server
+            stop_oauth_server,
+            write_text_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

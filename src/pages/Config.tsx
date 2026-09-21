@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Copy, Loader2, LogOut } from "lucide-react";
+import { Check, Copy, ExternalLink, FolderOpen, Info, Loader2, LogOut } from "lucide-react";
+import { openPath } from "@tauri-apps/plugin-opener";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { PageLayout } from "@/components/layout/PageLayout";
@@ -7,6 +10,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { REDIRECT_URI } from "@/lib/bgm";
 import { invalidateProxyCache, testProxy } from "@/lib/proxy";
 import {
@@ -19,11 +27,17 @@ import {
 import type { ProxyConfig } from "@/lib/store";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { useOAuthFlow, type OAuthMode } from "@/hooks/useOAuthFlow";
+import { pickBackupDir, runBackup } from "@/lib/backup";
 import { cn } from "@/lib/utils";
+
+function errText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
 
 export function Config() {
   // 登录态（user / needsReLogin）走 useAuthUser：会响应运行期的 auth-expired 事件。
   const { user, needsReLogin, setUser } = useAuthUser();
+  const queryClient = useQueryClient();
   // OAuth 交互状态机：phase 驱动按钮/倒计时/取消/手动粘贴等全部 UI。
   const { phase, start, cancel, submitManualCode, reset } = useOAuthFlow();
 
@@ -40,6 +54,12 @@ export function Config() {
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [proxyMsg, setProxyMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // 数据备份
+  const [backupDir, setBackupDir] = useState("");
+  /** 上次备份完成时间（epoch ms）；null = 从未备份。 */
+  const [lastBackupAt, setLastBackupAt] = useState<number | null>(null);
+  const [backingUp, setBackingUp] = useState(false);
 
   // OAuth 交互选项
   const [mode, setMode] = useState<OAuthMode>("auto");
@@ -62,11 +82,13 @@ export function Config() {
 
   async function refreshState() {
     setLoading(true);
-    const [id, secret, proxy, fixed] = await Promise.all([
+    const [id, secret, proxy, fixed, bDir, bLast] = await Promise.all([
       getStore<string>(StoreKeys.clientId),
       getStore<string>(StoreKeys.clientSecret),
       getStore<ProxyConfig>(StoreKeys.proxy),
       getStore<boolean>(StoreKeys.oauthFixedPort),
+      getStore<string>(StoreKeys.backupDir),
+      getStore<number>(StoreKeys.backupLastTime),
     ]);
     setClientId(id ?? "");
     setClientSecret(secret ?? "");
@@ -79,6 +101,8 @@ export function Config() {
         : null,
     );
     setFixedPort(fixed === true);
+    setBackupDir(bDir ?? "");
+    setLastBackupAt(typeof bLast === "number" ? bLast : null);
     setLoading(false);
   }
 
@@ -206,6 +230,53 @@ export function Config() {
     setSavedProxy(cfg);
     setProxyMsg({ type: "ok", text: "代理已保存，对所有请求立即生效" });
     flashSaved();
+  }
+
+  /** 选择/更换备份目录并记住，之后备份直接使用，无需再选。 */
+  async function handlePickBackupDir() {
+    try {
+      const dir = await pickBackupDir(backupDir || undefined);
+      if (!dir) return; // 用户取消
+      setBackupDir(dir);
+      await setStore(StoreKeys.backupDir, dir);
+    } catch (err) {
+      toast.error("选择目录失败", { description: errText(err) });
+    }
+  }
+
+  /** 在系统资源管理器中打开当前备份目录（目录未选或已被删除时由 opener 报错提示）。 */
+  async function handleOpenBackupDir() {
+    if (!backupDir) return;
+    try {
+      await openPath(backupDir);
+    } catch (err) {
+      toast.error("打开目录失败", { description: errText(err) });
+    }
+  }
+
+  /** 立即备份：未选目录时先弹选择（取消则静默中止），完成后记录时间并 toast 路径。 */
+  async function handleBackup() {
+    if (!user || backingUp) return;
+    setBackingUp(true);
+    try {
+      let dir = backupDir;
+      if (!dir) {
+        const picked = await pickBackupDir();
+        if (!picked) return;
+        dir = picked;
+        setBackupDir(dir);
+        await setStore(StoreKeys.backupDir, dir);
+      }
+      const { path, total } = await runBackup(user.username, dir, queryClient);
+      const now = Date.now();
+      setLastBackupAt(now);
+      await setStore(StoreKeys.backupLastTime, now);
+      toast.success(`已备份 ${total} 条收藏`, { description: path });
+    } catch (err) {
+      toast.error("备份失败", { description: errText(err) });
+    } finally {
+      setBackingUp(false);
+    }
   }
 
   // ===== 由 phase 派生的交互态 =====
@@ -537,6 +608,92 @@ export function Config() {
             )}
           >
             {proxyMsg.text}
+          </p>
+        )}
+      </section>
+
+      <section className="space-y-4 rounded-lg border border-border p-5">
+        <div className="flex items-center gap-1.5 text-lg font-semibold">
+          数据备份
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="cursor-help text-muted-foreground hover:text-foreground"
+                aria-label="备份说明"
+              >
+                <Info className="size-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right" className="max-w-72 space-y-1.5">
+              <p>
+                范围：动画、书籍、音乐、游戏、三次元 5
+                类收藏，包含每条的评分、进度、备注、标签与私密标记
+              </p>
+              <p>文件：每次备份生成一个带时间戳的新文件，不覆盖历史备份</p>
+              <p>目录：记住上次选择，之后点「立即备份」即可再次导出</p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          将全部收藏导出为 JSON 文件保存到本地目录，用于留存或迁移。
+        </p>
+        {user ? (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="backup-dir">备份目录</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="backup-dir"
+                  value={backupDir}
+                  readOnly
+                  placeholder="尚未选择，点击右侧按钮选择"
+                  className="font-mono text-xs"
+                />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={handlePickBackupDir}
+                  disabled={backingUp}
+                  title="选择备份目录"
+                >
+                  <FolderOpen className="size-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={handleOpenBackupDir}
+                  disabled={!backupDir}
+                  title="在资源管理器中打开"
+                >
+                  <ExternalLink className="size-4" />
+                </Button>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              上次备份：
+              {lastBackupAt
+                ? new Date(lastBackupAt).toLocaleString()
+                : "从未备份"}
+            </p>
+            <Button
+              onClick={handleBackup}
+              disabled={backingUp}
+              className="w-full"
+            >
+              {backingUp ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" /> 备份中…
+                </>
+              ) : (
+                "立即备份"
+              )}
+            </Button>
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            备份需要先登录 Bangumi 账号。
           </p>
         )}
       </section>
