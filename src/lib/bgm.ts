@@ -10,8 +10,11 @@ import type {
   BgmUser,
   CalendarDay,
   OAuthTokenResponse,
+  PagedSubjects,
   PagedUserCollections,
   SearchResponse,
+  SeasonSelection,
+  SeasonSubjectItem,
   Subject,
   UserCollection,
 } from "@/types/bgm";
@@ -252,6 +255,58 @@ export function getMe(): Promise<BgmUser> {
 /** 获取每日放送日历。公开接口，无需认证。 */
 export function getCalendar(): Promise<CalendarDay[]> {
   return bgmRequest<CalendarDay[]>("/calendar", { auth: false });
+}
+
+/**
+ * 按年月查询动画条目（公开接口，无需认证）。
+ * 仅用默认 date 排序——sort=rank 会静默丢弃无排名条目；type 必填（缺省返回空集不报错）。
+ */
+export function getSubjectsByMonth(
+  year: number,
+  month: number,
+  limit = 50,
+  offset = 0,
+): Promise<PagedSubjects> {
+  return bgmRequest<PagedSubjects>("/v0/subjects", {
+    auth: false,
+    query: { type: SubjectType.Anime, year, month, limit, offset },
+  });
+}
+
+/**
+ * 拉取一个季度的全部动画（3 个月并行、月内 offset 步进翻页，页数封顶 MAX_PAGES）。
+ * 季度按开播月归组（bgm 官方口径）：1月冬=1-3月、4月春=4-6、7月夏=7-9、10月秋=10-12。
+ * 每条结果标注**来源月份**作为归属月：远期季度大量条目未定档（date 为 null，
+ * 实测 2027-01 为 48/50），只能按来源月分组。未来季度同样有数据（下季条目已公布），不做限制。
+ * 跨月不会重复（实测 2027-01 与 2027-04 的 id 集合不相交），仍按 id 去重防御
+ * （并发翻页期间服务端列表变动可能平移 offset，同 getAllUserCollections）。
+ */
+export async function getSeasonSubjects(
+  sel: SeasonSelection,
+): Promise<SeasonSubjectItem[]> {
+  const months = [sel.season, sel.season + 1, sel.season + 2];
+  const byMonth = await Promise.all(
+    months.map(async (month) => {
+      const out: SeasonSubjectItem[] = [];
+      let offset = 0;
+      let step = 50;
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const res = await getSubjectsByMonth(sel.year, month, 50, offset);
+        // 只有服务器实际把 limit 压到 50 以下时才信任 res.limit（防短页误判漏条目）
+        if (page === 0 && res.limit > 0 && res.limit < 50) step = res.limit;
+        out.push(...res.data.map((subject) => ({ month, subject })));
+        if (res.data.length < step || out.length >= res.total) break;
+        offset += res.data.length;
+      }
+      return out;
+    }),
+  );
+  const seen = new Set<number>();
+  return byMonth.flat().filter((item) => {
+    if (seen.has(item.subject.id)) return false;
+    seen.add(item.subject.id);
+    return true;
+  });
 }
 
 export function getUserCollections(

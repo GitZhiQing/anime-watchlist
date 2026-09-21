@@ -130,7 +130,7 @@ token 响应：
 
 ## v0 官方 API（api.bgm.tv）
 
-### 在用端点总表（10 个）
+### 在用端点总表（11 个）
 
 | # | 方法 | 路径 | 用途 | 认证 | 本应用封装 |
 |---|---|---|---|---|---|
@@ -138,12 +138,13 @@ token 响应：
 | 2 | GET | `/calendar` | 每日放送（日历） | **公开** | `getCalendar` |
 | 3 | POST | `/v0/search/subjects` | 条目搜索 | Bearer | `searchSubjects` |
 | 4 | GET | `/v0/subjects/{subject_id}` | 条目完整详情 | Bearer | `getSubject` |
-| 5 | GET | `/v0/users/{username}/collections` | 收藏列表（分页） | Bearer | `getUserCollections` / `getAllUserCollections` |
-| 6 | GET | `/v0/users/{username}/collections/{subject_id}` | 单条收藏状态 | Bearer | `getUserCollection` |
-| 7 | POST | `/v0/users/-/collections/{subject_id}` | 新增收藏 | Bearer | `setCollection` |
-| 8 | PATCH | `/v0/users/-/collections/{subject_id}` | 修改收藏（夹 / 进度 / 评分） | Bearer | `patchCollection` |
-| 9 | GET | `/v0/episodes` | 条目剧集列表（分页） | Bearer | `getEpisodes` |
-| 10 | PUT | `/v0/users/-/collections/-/episodes/{episode_id}` | 标记单话看过 / 未看 | Bearer | `setEpisodeWatched` |
+| 5 | GET | `/v0/subjects` | 条目列表（按年月查季度新番） | **公开** | `getSubjectsByMonth` / `getSeasonSubjects` |
+| 6 | GET | `/v0/users/{username}/collections` | 收藏列表（分页） | Bearer | `getUserCollections` / `getAllUserCollections` |
+| 7 | GET | `/v0/users/{username}/collections/{subject_id}` | 单条收藏状态 | Bearer | `getUserCollection` |
+| 8 | POST | `/v0/users/-/collections/{subject_id}` | 新增收藏 | Bearer | `setCollection` |
+| 9 | PATCH | `/v0/users/-/collections/{subject_id}` | 修改收藏（夹 / 进度 / 评分） | Bearer | `patchCollection` |
+| 10 | GET | `/v0/episodes` | 条目剧集列表（分页） | Bearer | `getEpisodes` |
+| 11 | PUT | `/v0/users/-/collections/-/episodes/{episode_id}` | 标记单话看过 / 未看 | Bearer | `setEpisodeWatched` |
 
 > 路径中的 `-` 代表「当前认证用户」，本应用一律用 `/v0/users/-/…`，不写死 username。
 
@@ -175,6 +176,20 @@ token 响应：
 #### GET /v0/subjects/{subject_id} 条目完整详情
 
 **列表接口只返回 `SlimSubject`**（`short_summary` / 顶层 `score`）；`summary`、`rating.score`、`collection`、`total_episodes` 等完整字段**仅此接口有**（`Subject`）。缓存 30min。展开详情（`SubjectDetailView.tsx`）时按需拉取。
+
+#### GET /v0/subjects 条目列表（按年月）
+
+**公开接口，无需认证**（`auth: false`）。query：`type`（**必填**）、`year`、`month`、`limit`（1–50）、`offset`，另有 `cat` / `series` / `platform` / `sort`（`date`|`rank`）。返回 `PagedSubjects`（形状同搜索：`data` / `total` / `limit` / `offset`），**`data` 为完整 `Subject`**（与 `{id}` 详情同构）。
+
+用途：新番页季度视图（`Calendar.tsx`）。`getSeasonSubjects` 按季度聚合：3 个月并行、月内 offset 步进翻页（页数封顶 100），合并按 id 去重。
+
+实测结论（2026-09-21）：
+
+- **`type` 必填**：缺省不报错，静默返回 `{"data":[],"total":0}`
+- **必须用默认 `sort=date`**：`sort=rank` 会**静默过滤掉无排名条目**（2026-07 动画 total 从 143 降到 73）
+- 响应**无 `air_weekday` 字段**（放送星期只在 infobox 文本里）——季度视图按开播月分 3 组而非按星期
+- 2026-07 动画 total=143 ≈ 3 页（limit=50）；同条件 p1 `/p1/subjects` 约 96 条，**口径比 v0 少**，原因未查明
+- **季度口径 = 开播月归组**（bgm 官方口径）：1月冬=1-3月、4月春=4-6、7月夏=7-9、10月秋=10-12。3 月底开播的春季番会归入 1 月季，属 bgm 自身口径；v0 无按任意日期边界切季的浏览端点（`POST /v0/search/subjects` 的 `filter.air_date` 范围语法理论上可做，但 keyword 必填、返回 SlimSubject，不适合整季浏览）
 
 #### GET /v0/users/{username}/collections 收藏列表
 
@@ -210,7 +225,7 @@ body：`{ "type": 2 }` 看过 / `{ "type": 0 }` 未收藏。
 
 ### 数据模型注记
 
-- **SlimSubject vs Subject**：列表 / 搜索 / 热度榜用 `SlimSubject`（顶层 `score` + `short_summary`）；完整 `Subject` 仅 `GET /v0/subjects/{id}`
+- **SlimSubject vs Subject**：收藏列表 / 搜索 / 热度榜用 `SlimSubject`（顶层 `score` + `short_summary`）；完整 `Subject` 由 `GET /v0/subjects/{id}`（详情）与 `GET /v0/subjects` 按年月列表（季度视图）返回
 - **CollectionType**（收藏夹）1–5：想看 / 看过 / 在看 / 搁置 / 抛弃
 - `/calendar` 返回 Legacy `CalendarSubject`（旧格式），与 v0 新版类型分开建模
 - p1 的返回为 camelCase，单独建模后映射（见下节）

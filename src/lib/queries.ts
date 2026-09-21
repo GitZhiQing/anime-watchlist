@@ -26,6 +26,7 @@ import {
   patchCollection,
   getCalendar,
   getEpisodes,
+  getSeasonSubjects,
   type CollectionPatch,
 } from "@/lib/bgm";
 import { getTrendingSubjects, deriveCalendarTrending } from "@/lib/trending";
@@ -42,6 +43,8 @@ import type {
   P1RecItem,
   P1Relation,
   SearchResponse,
+  SeasonSelection,
+  SeasonSubjectItem,
   SlimSubject,
   TrendingItem,
   UserCollection,
@@ -422,6 +425,20 @@ export function useCalendar(enabled = true) {
     queryFn: getCalendar,
     staleTime: STALE.calendar,
     enabled,
+  });
+}
+
+/**
+ * 季度新番列表（公开接口，无需登录）。sel 为 null（本季每周放送模式）时禁用。
+ * 季度并入 key：切换季度自动拉取、来回切换命中缓存。历史季度数据近乎不变，
+ * staleTime 对齐条目详情的 30min。未来季度同样可查（下季条目已公布）。
+ */
+export function useSeasonSubjects(sel: SeasonSelection | null, enabled = true) {
+  return useQuery<SeasonSubjectItem[]>({
+    queryKey: ["season", sel?.year, sel?.season],
+    queryFn: () => getSeasonSubjects(sel as SeasonSelection),
+    staleTime: STALE.subjectDetail,
+    enabled: enabled && sel !== null,
   });
 }
 

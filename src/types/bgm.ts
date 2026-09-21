@@ -147,6 +147,34 @@ export interface SearchResponse {
   offset: number;
 }
 
+/** GET /v0/subjects 按年月查询返回（完整 Subject 分页，形状同 SearchResponse） */
+export interface PagedSubjects {
+  data: Subject[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+/** 新番季度起始月：1月冬 / 4月春 / 7月夏 / 10月秋 */
+export type SeasonKey = 1 | 4 | 7 | 10;
+
+/** 季度选择（year + 起始月） */
+export interface SeasonSelection {
+  year: number;
+  season: SeasonKey;
+}
+
+/**
+ * 季度列表条目：Subject 附带归属开播月。
+ * 归属月取数据层标注的「来源月份」（接口按 year+month 过滤，来源月即归属月）——
+ * 远期季度大量条目尚未定档（date 为 null，实测 2027-01 为 48/50），解析 date 无法分组。
+ */
+export interface SeasonSubjectItem {
+  subject: Subject;
+  /** 归属开播月（1-12） */
+  month: number;
+}
+
 /** 单条用户收藏（含 SlimSubject） */
 export interface UserCollection {
   subject_id: number;
