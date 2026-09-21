@@ -27,8 +27,8 @@ src/
     EnrichedSubjectRow.tsx # 带详情补全的列表行（新番列表/找番热度榜/找番搜索结果共用）：进入视口才拉 v0 详情回填简介/标签/NSFW
     SubjectDetailView.tsx # 统一详情容器（inline=展开行 / dialog=卡片弹窗）：字段/标签/「我的」折叠/简介/p1
     SubjectDetailDialog.tsx # 应用内详情弹窗壳（Dialog + SubjectDetailView dialog，网格卡片/p1 关联·推荐卡片共用）
-    SubjectGridCard.tsx  # 网格视图海报卡片（追番/新番共用，subject+caption props，点击开详情弹窗）
-    SubjectGroup.tsx     # 折叠分组容器（追番收藏夹分组 / 新番星期分组共用）
+    SubjectGridCard.tsx  # 网格视图海报卡片（追番/新番共用，subject+caption props，标题前带条目类型徽标，点击开详情弹窗）
+    SubjectGroup.tsx     # 折叠分组容器（追番收藏夹分组 / 新番星期分组共用；无边框，分组头为柔和底色圆角条 bg-muted/50）
     ViewTabs.tsx         # 列表/网格视图切换 Tabs（追番/新番共用）
     SubjectP1Sections.tsx # p1 扩展信息（角色 CV/关联条目/相关推荐，滚动可见才请求+骨架占位，失败静默隐藏；关联/推荐为海报卡片网格（视觉对齐 SubjectGridCard），点击卡片应用内打开详情弹窗，hover 预取）
     CollectAction.tsx    # 收藏/移动收藏夹下拉（xs~sm，乐观更新；不提供取消收藏——上游无端点，见 docs/API.md；非 modal——嵌 modal 详情弹窗时避免连带关闭弹窗）
@@ -41,6 +41,7 @@ src/
     auth.ts             # OAuth 流程编排
     proxy.ts            # HTTP 代理配置（store→插件 ClientOptions.proxy 转换 + 连通性测试）
     store.ts            # Store 插件封装（凭据/token/代理/偏好）
+    backup.ts           # 数据备份（全部 5 类收藏 → 带时间戳 JSON 文件；目录选择走 dialog 插件、写文件走自定义命令 write_text_file）
     queries.ts          # TanStack Query hooks（缓存+乐观更新+精准失效+hover预取）
     p1.ts               # p1 私有扩展信息（角色/关联/推荐，宽松解析静默失败）
     trending.ts         # 热度榜（p1）+ 日历兜底映射
@@ -51,7 +52,7 @@ src/
 src-tauri/
   src/lib.rs            # 插件注册 + OAuth 本地回环服务器（tiny_http，动态端口 7359–7369）
   src/main.rs
-  capabilities/default.json  # 权限（窗口/store/http/opener）
+  capabilities/default.json  # 权限（窗口/store/http/opener/dialog）
   tauri.conf.json       # 无边框窗口、Vite dev URL
 docs/                   # 文档（API.md 接口总文档 + dev/ 开发文档，见 docs/README.md）
 ```
@@ -66,9 +67,13 @@ docs/                   # 文档（API.md 接口总文档 + dev/ 开发文档，
 - **缓存与乐观更新**：TanStack Query（条目详情/剧集 30min，日历/热度 10min，收藏列表 1min，单条收藏 2min，搜索 5min，p1 扩展 1h）。全局 `gcTime` 30min（默认 5min 会在 staleTime 内就回收缓存导致重复请求）；`refetchOnWindowFocus`/`refetchOnReconnect` 均关闭，桌面端焦点切换/网络恢复不触发后台重拉。收藏 mutation **乐观直写全部缓存**（`patchCachedCollections`）+ 失败回滚，成功仅精准失效单条、列表只置 stale 不重拉——勿恢复对 `["collections"]` 的全量失效（会触发 5 类全量分页重拉）。**新增收藏仅乐观插入对应 subjectType 的列表缓存**（勿按 `["collections", username]` 前缀遍历插入全部 5 类——同一 stub 被多类缓存持有后，「全部」视图 flatMap 会渲染出重复卡片）；`getAllUserCollections` 分页拼接时按 `subject_id` 去重（并发翻页期间服务端列表变动平移 offset 可致跨页重复）。收藏状态读取一律走 `useUserCollectionSmart`（先查列表缓存，命中零请求），勿直接单条 GET。三个 keep-alive 页面均由 App 内 `*Visited` 门控（`watchlistVisited`/`calendarVisited`/`collectionVisited`），首次进入对应页才拉取，冷启动停在其他页零请求
 - **统一详情容器**：`SubjectDetailView` 是全应用唯一的详情渲染单元（inline=展开行 / dialog=弹窗），字段顺序、加载骨架、错误重试、p1 区块只写一份；收藏/外链操作位于标题行（列表行或弹窗头部），「我的」折叠栏承载评分/进度/备注
 - **追番/新番视图统一**：两页共用 `ViewTabs`（列表/网格切换，位于搜索框右侧）与 `SubjectGroup`（折叠分组容器）。新番页默认列表视图，两种视图都是周一→周日 7 个分组（旧存值 `prefs.calendar.viewMode="table"` 归一化为网格）；网格卡片共用 `SubjectGridCard`（`subject` + `caption` props，追番传进度、新番传在看人数）
+- **折叠分组无边框样式**：`SubjectGroup` 统一为「柔和底色圆角条分组头 + 内容区无边框无分隔线」（`bg-muted/50` 头部、`hover:bg-muted/70`，组间距 `space-y-3`），新番「今天」分组头部改用 `bg-primary/15` 强调（`primary` 是中性色，/5 与普通头部几乎无差别）。`SubjectRow` 展开详情区同步去掉 `border-t` 分隔线（仅留 `px-4 pb-4 pt-3` 内距，靠行自身的 `data-[state=open]:bg-muted/30` 底色区分）。页面侧的内容包装不再加 `border-t`；追番页骨架屏（`WatchlistSkeleton`）样式与之对齐。**新增分组/折叠容器请沿用此无边框样式**，勿加 `border border-border`
+- **卡片类型徽标**：网格卡片（`SubjectGridCard`）与 p1 海报卡片（`SubjectP1Sections.P1SubjectCard`）在封面**右上角**渲染条目类型徽标（`SUBJECT_LABELS` + `SUBJECT_BADGE_STYLES` 彩色胶囊，与列表行 `SubjectRow` 的徽标同款）——该位置原先放评分角标，现由类型徽标顶替（评分仍在列表视图与详情弹窗展示）；p1 卡片的关系角标与类型徽标同排（关系角标可截断，类型徽标 `shrink-0` 不被挤掉）；左上角保留 R18 徽标（`SubjectGridCard`，封面已模糊）。网格卡片底部标题浮层只余标题
+- **新番季度切换**：新番页默认「本季」= `/calendar` 每周放送（周一→周日 7 组 + 今日高亮）。季度选择器是**内容区顶部的固定选择条**（`SeasonPicker` 经 `PageLayout` 的 `subheader` 插槽渲染，不随列表滚动）：`[本季] | [年份 ▾] [1月|4月|7月|10月]`，全部**单层平铺**——年份下拉是「次年→2015」的扁列表（含次年，无子菜单），季度是四段分段控件（选中 primary 反白，样式对齐配置页分段控件）；**未来季度可选**（下季条目在库里已公布，实测 2026-10 有 101 条；勿再加「未来置灰」限制）。季度数据走公开接口 `GET /v0/subjects?type=2&year&month`（返回**完整 Subject**，一季 = 3 个月并行 × 月内 limit=50 翻页，每条结果标注**来源月份**作为归属月，合并按 id 去重；勿用 `sort=rank`——会静默丢无排名条目），按**归属月**分 3 组渲染（接口无 `air_weekday`，不按星期；bgm 官方口径：3 月底开播的春季番归 1 月季）。**分组必须用来源月份而非解析 `date`**：远期季度大量条目未定档（`date` 为 null，实测 2027-01 为 48/50），解析日期会把它们全堆进季首月；`date` 为 null 的行由 `MetaRow` 自然隐藏日期。行直接用 `SubjectRow`（数据完整，无需 `EnrichedSubjectRow` 视口补全），数据加载后逐条 `setQueryData(["subject", id])` 预热详情缓存（与 `{id}` 详情同构，展开/hover 预取零请求）。季度选择**不持久化**（启动回本季，会话内 keep-alive 保留）；季度排序（热门/开播/评分/名称 + 方向，自然方向为基准取反，无日期条目排在「开播」序末）持久化 `prefs.calendar.seasonSort`，控件随选择条右侧显示（仅季度模式，本季为每周放送固定序）。`["calendar"]` query key 保持不变（找番热度榜兜底继续共用）
 - **列表信息补全**：`/calendar`、p1 热度榜、搜索结果等列表源缺简介/标签/NSFW（实测 calendar summary 全空，搜索的 tags 常为空、`short_summary` 截短）；`EnrichedSubjectRow`（新番列表行、找番热度榜、找番搜索结果共用）经 `useInViewOnce` 进入视口后才逐行调 `GET /v0/subjects/{id}` 回填（`mergeSubjectDetail`），与 hover 预取/展开详情共享 `["subject", id]` 30min 缓存，失败静默降级；网格视图不做补全（卡片无简介/标签）
 - **追番排序**：排序键 默认/收藏/评分/名称/更新（`collect`=条目收藏人数 `collection_total`，接口可能缺省按 0）+ 升降序 toggle。持久化 `prefs.watchlist.sortReversed`（布尔，以各键自然方向为基准取反），老用户已有排序行为不变；「默认」倒序 = 接口原序整体反转
 - **找番搜索历史**：提交关键词即记录——最新在前、去重、上限 10 条，持久化 `prefs.collection.searchHistory`（Store）；搜索框下方 badge 区：点击 badge 填入搜索框、× 删单条、标题行可折叠、「清空」全清；清空搜索框即回热度榜初始态（`submitted` 置 null）
+- **数据备份**：配置页把全部 5 类收藏（含评分/进度/备注/标签/私密标记）导出为带时间戳的 JSON 文件（`anime-watchlist-backup-YYYYMMDD-HHmmss.json`，每次新文件不覆盖历史）。数据仍实时拉 API（「数据不落库」原则不变）：取数复用 `collectionsQueryOptions`（`qc.fetchQuery`，staleTime 内命中缓存零请求）；目录选择走 `@tauri-apps/plugin-dialog`（`dialog:default` 权限），写文件走应用自有 Rust 命令 `write_text_file`（`std::fs::write`，自有命令不占 capability 权限面，**勿为此引入 fs 插件**）；备份目录与上次备份时间持久化 `prefs.backup.dir`/`prefs.backup.last_time`（Store）；备份文件目前仅导出不导入（上游无取消收藏端点，无法全量还原，见下方「不提供取消收藏」）
 - **封面**：列表用 `images.small`（`object-contain`，容器比例 `aspect-[5/7]`），弹大图用 `images.medium`。**medium 实际尺寸随数据源漂移**（2026-09 实测：v0=r/800、p1 热度榜=r/200、calendar 经典 `m/` 路径≈100px）——列表行由 `mergeSubjectDetail` 统一回填 v0 `images`，保证新番/找番/热度榜行的弹窗大图清晰；`index.html` 对封面 CDN `lain.bgm.tv` 做 preconnect（API 走 Rust 侧不经 webview，无需预连接），`FadeImg` 默认 `loading="lazy" decoding="async"`（WebView2 会因批量 lazy 封面打 `[Intervention]` INFO 日志，属正常机制回执勿当报错）
 
 ## 版本更新与发布（两件事）
