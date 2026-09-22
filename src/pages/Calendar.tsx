@@ -28,7 +28,7 @@ import { SubjectRow } from "@/components/SubjectRow";
 import { ViewTabs, type ViewMode } from "@/components/ViewTabs";
 import { SearchInput } from "@/components/SearchInput";
 import { EnrichedSubjectRow } from "@/components/EnrichedSubjectRow";
-import { SeasonPicker, SEASON_LABELS } from "@/components/SeasonPicker";
+import { SeasonPicker, SEASON_LABELS, currentSeasonSelection } from "@/components/SeasonPicker";
 import { subjectQueryOptions, useCalendar, useSeasonSubjects } from "@/lib/queries";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { cn } from "@/lib/utils";
@@ -50,12 +50,12 @@ type DensityMode = "full" | "compact";
 /* ---- 季度排序 ---- */
 
 type SeasonSortKey = "heat" | "date" | "score" | "name";
-const SEASON_SORT_LABELS: Record<SeasonSortKey, string> = {
-  heat: "热门",
+const SEASON_SORT_LABELS: Record<Exclude<SeasonSortKey, "heat">, string> = {
   date: "开播",
   score: "评分",
   name: "名称",
 };
+
 /** 各排序键的自然方向（reversed 在此基础上取反，语义同追番页 sortReversed） */
 const SEASON_SORT_NATURAL_DIR: Record<SeasonSortKey, "asc" | "desc"> = {
   heat: "desc",
@@ -64,9 +64,28 @@ const SEASON_SORT_NATURAL_DIR: Record<SeasonSortKey, "asc" | "desc"> = {
   name: "asc",
 };
 
+/* 季度关键指标：未来季=想看（未播）、当前季=在看（在播）、过往季=看过（已完结）。
+ *  「热门」排序键与列表附加信息随所选季度自适应切换指标 */
+type SeasonMetric = "doing" | "wish" | "collect";
+const METRIC_LABELS: Record<SeasonMetric, string> = { doing: "在看", wish: "想看", collect: "看过" };
+
+function seasonMetric(sel: SeasonSelection): SeasonMetric {
+  const cur = currentSeasonSelection();
+  const abs = (s: SeasonSelection) => s.year * 12 + s.season;
+  const d = abs(sel) - abs(cur);
+  return d > 0 ? "wish" : d < 0 ? "collect" : "doing";
+}
+
 interface SeasonSort {
   key: SeasonSortKey;
   reversed: boolean;
+}
+
+const SEASON_SORT_KEYS: SeasonSortKey[] = ["heat", "date", "score", "name"];
+
+/** 排序键标签：heat 为自适应指标键，显示当前季度的关键指标名（在看/想看/看过） */
+function seasonSortLabel(key: SeasonSortKey, metric: SeasonMetric): string {
+  return key === "heat" ? METRIC_LABELS[metric] : SEASON_SORT_LABELS[key];
 }
 
 const DEFAULT_SEASON_SORT: SeasonSort = { key: "heat", reversed: false };
@@ -77,7 +96,7 @@ function isSeasonSort(v: unknown): v is SeasonSort {
     !!v &&
     typeof v === "object" &&
     typeof (v as SeasonSort).key === "string" &&
-    (v as SeasonSort).key in SEASON_SORT_LABELS &&
+    SEASON_SORT_KEYS.includes((v as SeasonSort).key as SeasonSortKey) &&
     typeof (v as SeasonSort).reversed === "boolean"
   );
 }
@@ -147,8 +166,9 @@ function subjectToSlim(s: Subject): SlimSubject {
 /** 行条目：enrich=true（本季数据缺简介/标签/大图）进视口后补全详情；季度数据已完整直接渲染 */
 interface RowItem {
   slim: SlimSubject;
-  /** 在看人数（列表态附加信息 / 网格卡片 caption） */
-  doing?: number;
+  /** 关键指标人数：本季恒为在看；季度随所选季度自适应（想看/在看/看过） */
+  metric?: number;
+  metricLabel: string;
   enrich: boolean;
 }
 
@@ -160,7 +180,7 @@ interface RenderGroup {
   isToday?: boolean;
 }
 
-/** 本季（/calendar）→ 按星期 7 组 */
+/** 本季（/calendar）→ 按星期 7 组；组内按在看人数降序（稳定排序，同值保持接口原序） */
 function calendarToGroups(data: CalendarDay[]): RenderGroup[] {
   const todayId = getTodayBangumiWeekday();
   return data.map((day) => {
@@ -177,11 +197,14 @@ function calendarToGroups(data: CalendarDay[]): RenderGroup[] {
           )}
         </>
       ),
-      items: day.items.map((it) => ({
-        slim: calendarToSlimSubject(it),
-        doing: it.collection?.doing,
-        enrich: true,
-      })),
+      items: [...day.items]
+        .sort((a, b) => (b.collection?.doing ?? 0) - (a.collection?.doing ?? 0))
+        .map((it) => ({
+          slim: calendarToSlimSubject(it),
+          metric: it.collection?.doing,
+          metricLabel: METRIC_LABELS.doing,
+          enrich: true,
+        })),
       isToday,
     };
   });
@@ -189,31 +212,43 @@ function calendarToGroups(data: CalendarDay[]): RenderGroup[] {
 
 /** 季度（/v0/subjects，已排序）→ 按开播月 3 组。
  *  归属月取数据层标注的来源月份：远期季度大量条目未定档（date 为 null），解析 date 无法分组 */
-function seasonToGroups(sorted: SeasonSubjectItem[], sel: SeasonSelection): RenderGroup[] {
+function seasonToGroups(
+  sorted: SeasonSubjectItem[],
+  sel: SeasonSelection,
+  metric: SeasonMetric,
+): RenderGroup[] {
   const months = [sel.season, sel.season + 1, sel.season + 2];
   const buckets: RowItem[][] = months.map(() => []);
   for (const item of sorted) {
     const idx = months.indexOf(item.month);
     buckets[idx >= 0 ? idx : 0].push({
       slim: subjectToSlim(item.subject),
-      doing: item.subject.collection?.doing,
+      metric: item.subject.collection?.[metric],
+      metricLabel: METRIC_LABELS[metric],
       enrich: false,
     });
   }
   return months.map((m, i) => ({ id: `${sel.year}-${m}`, title: `${m} 月`, items: buckets[i] }));
 }
 
-/** 季度内排序：各键含自然方向（热门/评分降序、开播/名称升序），reversed 取反；无值条目沉底 */
+/** 季度内排序：各键含自然方向（指标/评分降序、开播/名称升序），reversed 取反；无值条目沉底 */
 function compareSeasonSubject(
   a: Subject,
   b: Subject,
   key: SeasonSortKey,
   reversed: boolean,
+  metric: SeasonMetric,
 ): number {
   const r = reversed ? -1 : 1;
   switch (key) {
-    case "heat":
-      return (collectionTotal(b.collection) - collectionTotal(a.collection)) * r;
+    case "heat": {
+      // 自适应指标键：按所选季度的关键指标（想看/在看/看过）降序，同值以收藏总数 tie-break
+      const primary =
+        (b.collection?.[metric] ?? 0) - (a.collection?.[metric] ?? 0);
+      const r2 =
+        primary !== 0 ? primary : collectionTotal(b.collection) - collectionTotal(a.collection);
+      return r2 * r;
+    }
     case "date": {
       const av = a.date ?? "";
       const bv = b.date ?? "";
@@ -305,14 +340,15 @@ export function Calendar({ visited = true }: CalendarProps) {
     setThresholdInput(String(threshold));
   }, [threshold]);
 
-  /* 统一分组：本季按星期 / 季度按开播月（先组内排序） */
+  /* 统一分组：本季按星期（组内在看降序）/ 季度按开播月（先全局排序） */
   const groups = useMemo<RenderGroup[] | undefined>(() => {
     if (season) {
       if (!seasonQuery.data) return undefined;
+      const metric = seasonMetric(season);
       const sorted = [...seasonQuery.data].sort((a, b) =>
-        compareSeasonSubject(a.subject, b.subject, seasonSort.key, seasonSort.reversed),
+        compareSeasonSubject(a.subject, b.subject, seasonSort.key, seasonSort.reversed, metric),
       );
-      return seasonToGroups(sorted, season);
+      return seasonToGroups(sorted, season, metric);
     }
     return calendarQuery.data ? calendarToGroups(calendarQuery.data) : undefined;
   }, [season, seasonQuery.data, calendarQuery.data, seasonSort]);
@@ -367,6 +403,9 @@ export function Calendar({ visited = true }: CalendarProps) {
       : "desc"
     : SEASON_SORT_NATURAL_DIR[seasonSort.key];
 
+  /* 当前关键指标：季度模式随所选季度自适应，本季每周放送恒为在看 */
+  const activeMetric = season ? seasonMetric(season) : "doing";
+
   /* 应用阈值（失焦或回车时） */
   function applyThreshold(value: string) {
     const n = parseInt(value, 10);
@@ -413,7 +452,8 @@ export function Calendar({ visited = true }: CalendarProps) {
         <>
           <SeasonPicker value={season} onChange={setSeason} />
 
-          {/* 季度排序：左半 toggle 升/降序，右半选排序键（仅季度模式，本季为每周放送固定序） */}
+          {/* 季度排序：左半 toggle 升/降序，右半选排序键（仅季度模式；首键随季度自适应
+              在看/想看/看过，本季为每周放送组内在看降序不显示控件） */}
           {season && (
             <ButtonGroup className="ml-auto">
               <Button
@@ -434,12 +474,12 @@ export function Calendar({ visited = true }: CalendarProps) {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="gap-1">
-                    {SEASON_SORT_LABELS[seasonSort.key]}
+                    {seasonSortLabel(seasonSort.key, activeMetric)}
                     <ChevronDown className="size-3.5" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  {(Object.keys(SEASON_SORT_LABELS) as SeasonSortKey[]).map((k) => (
+                  {SEASON_SORT_KEYS.map((k) => (
                     <DropdownMenuItem
                       key={k}
                       onClick={() => setSeasonSort((s) => ({ ...s, key: k }))}
@@ -450,7 +490,7 @@ export function Calendar({ visited = true }: CalendarProps) {
                           seasonSort.key === k ? "opacity-100" : "opacity-0",
                         )}
                       />
-                      {SEASON_SORT_LABELS[k]}
+                      {seasonSortLabel(k, activeMetric)}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
@@ -566,14 +606,15 @@ export function Calendar({ visited = true }: CalendarProps) {
 
 /* ---- 列表视图子组件 ---- */
 
-/** 列表态附加信息：在看人数（评分、话数、放送日期及周几已由 MetaRow 统一展示） */
-function doingExtra(doing?: number): ReactNode {
-  return doing ? <p className="text-xs text-muted-foreground">共 {doing} 人在看</p> : null;
+/** 列表态附加信息：关键指标人数（评分、话数、放送日期及周几已由 MetaRow 统一展示）。
+ *  标签随季度自适应——本季/当前季「在看」、未来季「想看」、过往季「看过」 */
+function metricExtra(count?: number, label?: string): ReactNode {
+  return count ? <p className="text-xs text-muted-foreground">共 {count} 人{label}</p> : null;
 }
 
-/** 网格卡片说明文字：在看人数（与列表态一致） */
-function doingCaption(doing?: number): string | undefined {
-  return doing ? `共 ${doing} 人在看` : undefined;
+/** 网格卡片说明文字：与列表态一致 */
+function metricCaption(count?: number, label?: string): string | undefined {
+  return count ? `共 ${count} 人${label}` : undefined;
 }
 
 interface SubjectGroupsProps {
@@ -612,7 +653,7 @@ function SubjectGroups({ groups, viewMode }: SubjectGroupsProps) {
                   <SubjectGridCard
                     key={item.slim.id}
                     subject={item.slim}
-                    caption={doingCaption(item.doing)}
+                    caption={metricCaption(item.metric, item.metricLabel)}
                   />
                 ))}
               </div>
@@ -624,13 +665,13 @@ function SubjectGroups({ groups, viewMode }: SubjectGroupsProps) {
                   <EnrichedSubjectRow
                     key={item.slim.id}
                     subject={item.slim}
-                    extraInfo={doingExtra(item.doing)}
+                    extraInfo={metricExtra(item.metric, item.metricLabel)}
                   />
                 ) : (
                   <SubjectRow
                     key={item.slim.id}
                     subject={item.slim}
-                    extraInfo={doingExtra(item.doing)}
+                    extraInfo={metricExtra(item.metric, item.metricLabel)}
                   />
                 ),
               )}
