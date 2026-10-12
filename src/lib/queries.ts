@@ -31,15 +31,19 @@ import {
 } from "@/lib/bgm";
 import { getTrendingSubjects, deriveCalendarTrending } from "@/lib/trending";
 import {
+  getCharacterDetail,
+  getPersonDetail,
   getSubjectCharacters,
   getSubjectRelations,
   getSubjectRecs,
+  type P1ListResult,
 } from "@/lib/p1";
 import { SubjectType, SUBJECT_TYPES } from "@/types/bgm";
 import type {
   CalendarDay,
   CollectionType,
   P1Character,
+  P1PersonDetail,
   P1RecItem,
   P1Relation,
   SearchResponse,
@@ -472,7 +476,7 @@ export function useSeasonSubjects(sel: SeasonSelection | null, enabled = true) {
 // gcTime 2 小时：重开同一详情弹窗不重拉；enabled 供区块滚动可见门控。
 
 export function useSubjectCharacters(subjectId: number, enabled = true) {
-  return useQuery<P1Character[]>({
+  return useQuery<P1ListResult<P1Character>>({
     queryKey: ["p1", "characters", subjectId],
     queryFn: () => getSubjectCharacters(subjectId),
     staleTime: STALE.p1Extend,
@@ -482,7 +486,7 @@ export function useSubjectCharacters(subjectId: number, enabled = true) {
 }
 
 export function useSubjectRelations(subjectId: number, enabled = true) {
-  return useQuery<P1Relation[]>({
+  return useQuery<P1ListResult<P1Relation>>({
     queryKey: ["p1", "relations", subjectId],
     queryFn: () => getSubjectRelations(subjectId),
     staleTime: STALE.p1Extend,
@@ -492,11 +496,33 @@ export function useSubjectRelations(subjectId: number, enabled = true) {
 }
 
 export function useSubjectRecs(subjectId: number, enabled = true) {
-  return useQuery<P1RecItem[]>({
+  return useQuery<P1ListResult<P1RecItem>>({
     queryKey: ["p1", "recs", subjectId],
     queryFn: () => getSubjectRecs(subjectId),
     staleTime: STALE.p1Extend,
     gcTime: GC_P1,
     enabled: !!subjectId && enabled,
+  });
+}
+
+/** 角色详情（p1 私有端点，形状宽松）。id 为 null 时禁用（目标未选定时零请求） */
+export function useCharacterDetail(characterId: number | null) {
+  return useQuery<P1PersonDetail>({
+    queryKey: ["p1", "character", characterId],
+    queryFn: () => getCharacterDetail(characterId!),
+    staleTime: STALE.p1Extend,
+    gcTime: GC_P1,
+    enabled: characterId !== null,
+  });
+}
+
+/** 声优（人物）详情（p1 私有端点，形状宽松） */
+export function usePersonDetail(personId: number | null) {
+  return useQuery<P1PersonDetail>({
+    queryKey: ["p1", "person", personId],
+    queryFn: () => getPersonDetail(personId!),
+    staleTime: STALE.p1Extend,
+    gcTime: GC_P1,
+    enabled: personId !== null,
   });
 }

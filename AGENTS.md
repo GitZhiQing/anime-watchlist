@@ -27,10 +27,12 @@ src/
     EnrichedSubjectRow.tsx # 带详情补全的列表行（新番列表/找番热度榜/找番搜索结果共用）：进入视口才拉 v0 详情回填简介/标签/NSFW
     SubjectDetailView.tsx # 统一详情容器（inline=展开行 / dialog=卡片弹窗）：字段/标签/「我的」折叠/简介/p1
     SubjectDetailDialog.tsx # 应用内详情弹窗壳（Dialog + SubjectDetailView dialog，网格卡片/p1 关联·推荐卡片共用）
+    SubjectEpisodesSection.tsx # 详情剧集列表区（简介与 p1 区块之间；与「我的进度」共享 ["episodes",id] 缓存、进入视口才请求；已看高亮/未播置灰/单话简介，默认 12 行 + 展开全部；空/失败静默隐藏）
+    PersonDetailDialog.tsx # 角色/声优详情弹窗（p1 人物端点宽松解析降级；角色弹窗内点 CV 名可再开声优弹窗——递归复用）
     SubjectGridCard.tsx  # 网格视图海报卡片（追番/新番共用，subject+caption props，标题前带条目类型徽标，点击开详情弹窗）
     SubjectGroup.tsx     # 折叠分组容器（追番收藏夹分组 / 新番星期分组共用；无边框，分组头为柔和底色圆角条 bg-muted/50）
     ViewTabs.tsx         # 列表/网格视图切换 Tabs（追番/新番共用）
-    SubjectP1Sections.tsx # p1 扩展信息（角色 CV/关联条目/相关推荐，滚动可见才请求+骨架占位，失败静默隐藏；关联/推荐为海报卡片网格（视觉对齐 SubjectGridCard），点击卡片应用内打开详情弹窗，hover 预取）
+    SubjectP1Sections.tsx # p1 扩展信息（角色 CV/关联条目/相关推荐，滚动可见才请求+骨架占位，失败静默隐藏；关联/推荐为海报卡片网格（视觉对齐 SubjectGridCard），点击卡片应用内打开详情弹窗，hover 预取；角色卡：署名/身份徽标/全部 CV，点卡片开角色弹窗、点 CV 名开声优弹窗，默认 12 位 +「查看全部」客户端展开——p1 列表未传 limit 响应即全量）
     CollectAction.tsx    # 收藏/移动收藏夹下拉（xs~sm，乐观更新；不提供取消收藏——上游无端点，见 docs/API.md，菜单尾「到网页管理收藏」深链缓解；非 modal——嵌 modal 详情弹窗时避免连带关闭弹窗）
     ProgressEdit.tsx     # RateStars（我的评分）+ ProgressRows（我的进度：逐集/步进 + 书籍卷）
     BangumiLink.tsx      # Bangumi 外链（标题行内联图标模式）
@@ -120,7 +122,7 @@ CI 在 `windows-latest`：安装依赖 → `npm run tauri build` → 打包便�
 - **204/空 body**：`bgmRequest` 统一用 `res.text()` 读取，空则返回 undefined，避免 JSON 解析报错
 - **SlimSubject vs Subject**：列表接口返回 SlimSubject（`short_summary`/顶层 `score`），完整 Subject 仅 `GET /v0/subjects/{id}` 有 `summary`/`rating.score`/`total_episodes`
 - **infobox 形状多态**：Bangumi 部分条目 infobox 缺 `values` 或整体非数组，渲染前必须容错（`infoboxValue`）；详情树包 ErrorBoundary，数据异常只降级单区块不白屏
-- **p1 私有接口**（next.bgm.tv，无官方文档）：解析宽松、失败静默降级（区块直接隐藏），缓存 1h（`lib/p1.ts`）。**响应形状会漂移**：2026-09 实测 characters/relations/recs 由顶层数组变为 `{data:[...],total}` 包装、条目嵌套 `character`/`subject` 键、`relation` 变对象、CV 键 `cast`→`casts[].person`——`p1.ts` 统一解包归一化为扁平类型，渲染层与 `types/bgm.ts` 不感知，改形状时只动 p1.ts；部分条目数据本身为空（`{"data":[],"total":0}`），按空数据隐藏非异常（详见 `docs/API.md` p1 章节）
+- **p1 私有接口**（next.bgm.tv，无官方文档）：解析宽松、失败静默降级（区块直接隐藏），缓存 1h（`lib/p1.ts`）。**响应形状会漂移**：2026-09 实测 characters/relations/recs 由顶层数组变为 `{data:[...],total}` 包装、条目嵌套 `character`/`subject` 键、`relation` 变对象、CV 键 `cast`→`casts[].person`——`p1.ts` 统一解包归一化为扁平类型（列表 getter 返回 `{items,total}`，total 供截断校验），渲染层与 `types/bgm.ts` 不感知，改形状时只动 p1.ts；`/p1/characters/{id}`、`/p1/persons/{id}` 详情端点形状未实测，`normalizePerson` 宽松归一化「能取多少取多少」，弹窗 UI 降级；部分条目数据本身为空（`{"data":[],"total":0}`），按空数据隐藏非异常（详见 `docs/API.md` p1 章节）
 - **收藏默认私密**：POST collection 恒带 `private:true`（新增收藏默认私密）；PATCH 的 `private` 由 queries 层组装——`usePatchCollection` 以 vars `currentPrivate`（各调用点传 `col.private`）兜底、显式切换传 `private` 字段（「我的」头部私密开关），**勿在 bgm 层重新硬编码 private**（会把网页端设为公开的收藏重置回私密）；服务端要求改非 type 字段必带 private
 - **不提供「取消收藏」**：Bangumi v0 API 无取消收藏条目端点——官方 OpenAPI 对 `/v0/users/-/collections/{subject_id}` 只定义 post/patch，服务端 routes.go 相关 DELETE 注释为 `TODO: wait for soft delete`（人物/角色同理），实测 DELETE 返回框架默认 404。相关调用代码已移除，勿凭文档加回
 - **Bangumi API base**：`https://api.bgm.tv`（v0），OAuth 用 `https://bgm.tv`

@@ -355,3 +355,18 @@ export interface P1RecItem {
   images?: SubjectImages;
   scoreCount?: number;
 }
+
+/**
+ * /p1/characters/{id} 与 /p1/persons/{id} 详情（宽松）。
+ * 端点仅在上游 p1.yaml 登记、响应形状未实测：除 id 外字段全可选，
+ * 由 p1.ts 归一化「能取多少取多少」，弹窗 UI 对缺失降级展示。
+ */
+export interface P1PersonDetail {
+  id: number;
+  name?: string;
+  nameCN?: string;
+  images?: SubjectImages;
+  summary?: string;
+  /** 人物职业（如 制作人员 / 声优 / 漫画家），存在则渲染为小徽标 */
+  career?: string[];
+}

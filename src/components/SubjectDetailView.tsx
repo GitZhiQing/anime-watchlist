@@ -23,6 +23,7 @@ import { FadeImg } from "@/components/FadeImg";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { SubjectFields, SubjectTags } from "@/components/SubjectFields";
 import { SubjectSummary } from "@/components/SubjectSummary";
+import { SubjectEpisodesSection } from "@/components/SubjectEpisodesSection";
 import { SubjectP1Sections } from "@/components/SubjectP1Sections";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import {
@@ -467,9 +468,10 @@ export function SubjectDetailView({
             {tags}
             <MySection subjectId={subjectId} detail={detail} />
           </div>
-          {/* 滚动区：简介 + p1 扩展（角色/关联/推荐） */}
+          {/* 滚动区：简介 + 剧集列表 + p1 扩展（角色/关联/推荐） */}
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pt-2">
             <SubjectSummary summary={detail.summary} />
+            <SubjectEpisodesSection subjectId={subjectId} />
             <SubjectP1Sections subjectId={subjectId} />
           </div>
         </div>
@@ -481,6 +483,7 @@ export function SubjectDetailView({
             summary={detail.summary}
             collapsible={variant === "inline"}
           />
+          <SubjectEpisodesSection subjectId={subjectId} />
           <SubjectP1Sections subjectId={subjectId} />
         </div>
       );

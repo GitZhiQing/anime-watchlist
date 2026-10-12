@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import {
   usePrefetchSubject,
   useSubjectCharacters,
@@ -7,13 +8,11 @@ import {
 } from "@/lib/queries";
 import { coverUrl } from "@/lib/cover";
 import { SubjectDetailDialog } from "@/components/SubjectDetailDialog";
-import { FadeImg } from "@/components/FadeImg";
 import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+  PersonDetailDialog,
+  type PersonDialogTarget,
+} from "@/components/PersonDetailDialog";
+import { FadeImg } from "@/components/FadeImg";
 import { useInViewOnce } from "@/hooks/useInViewOnce";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -34,9 +33,12 @@ import { SubjectType, SUBJECT_LABELS, SUBJECT_BADGE_STYLES } from "@/types/bgm";
  * 缓存 1 小时、保留 2 小时——重开同一详情弹窗不再重拉。
  */
 
-const MAX_CHARACTERS = 16;
 const MAX_RELATIONS = 12;
 const MAX_RECS = 8;
+/** 角色默认展示数，超出折叠为「查看全部」（客户端展开，无翻页请求） */
+const CHARACTERS_PREVIEW = 12;
+/** 角色身份徽标（p1 type 数值语义未实测确认，宽松映射） */
+const ROLE_LABELS: Record<number, string> = { 1: "主角", 2: "配角", 3: "客串" };
 
 /** p1 卡片网格：auto-fill 同时适配详情弹窗的宽滚动区与展开行的窄容器 */
 const CARD_GRID =
@@ -158,61 +160,126 @@ function p1NavSubject(r: {
   };
 }
 
-/** 角色/CV：横向滚动头像卡 */
-function CharactersSection({ data }: { data: P1Character[] }) {
-  const list = data.slice(0, MAX_CHARACTERS);
+/** 角色/CV：横向滚动头像卡。点角色图/名开角色弹窗，点 CV 名开声优弹窗；全部 CV 展示（>2 位折叠为「等N位」） */
+function CharactersSection({
+  data,
+  onOpenCharacter,
+  onOpenPerson,
+}: {
+  data: P1Character[];
+  onOpenCharacter: (t: PersonDialogTarget) => void;
+  onOpenPerson: (t: PersonDialogTarget) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const list = expanded ? data : data.slice(0, CHARACTERS_PREVIEW);
   return (
-    <div className="scrollbar-thin flex gap-2 overflow-x-auto pb-1">
-      {list.map((ch) => {
-        const cv = ch.cast?.[0];
-        const img = coverUrl(ch.images, 200);
-        return (
-          <div
-            key={ch.id}
-            className="flex w-20 shrink-0 flex-col items-center gap-1 text-center"
-            title={cv ? `${ch.name}\nCV：${cv.name}` : ch.name}
-          >
-            {img ? (
-              <Dialog>
-                <DialogTrigger asChild>
-                  <button
-                    type="button"
-                    className="cursor-zoom-in"
-                    title="查看大图"
-                  >
-                    <img
-                      src={img}
-                      alt={ch.name}
-                      loading="lazy"
-                      decoding="async"
-                      // 3:4 竖版固定框：竖长图裁顶部（保留脸部），横宽图垂直放满、水平居中
-                      className="aspect-[3/4] w-16 rounded-md object-cover object-top transition-opacity hover:opacity-80"
-                    />
-                  </button>
-                </DialogTrigger>
-                <DialogContent showCloseButton={false} variant="image">
-                  <DialogTitle className="sr-only">{ch.name}</DialogTitle>
+    <div className="space-y-1.5">
+      <div className="scrollbar-thin flex gap-2 overflow-x-auto pb-1">
+        {list.map((ch) => {
+          const img = coverUrl(ch.images, 200);
+          const role = ch.type !== undefined ? ROLE_LABELS[ch.type] : undefined;
+          const cvs = ch.cast ?? [];
+          const subtitle = [role, ch.characterName].filter(Boolean).join(" · ");
+          const open = () =>
+            onOpenCharacter({
+              kind: "character",
+              id: ch.id,
+              name: ch.name,
+              images: ch.images,
+              casts: ch.cast,
+            });
+          return (
+            <div
+              key={ch.id}
+              className="flex w-20 shrink-0 flex-col items-center gap-0.5 text-center"
+              title={
+                cvs.length > 0
+                  ? `${ch.name}\nCV：${cvs.map((c) => c.name).join(" / ")}`
+                  : ch.name
+              }
+            >
+              <button
+                type="button"
+                onClick={open}
+                className="cursor-pointer"
+                title={`查看角色：${ch.name}`}
+              >
+                {img ? (
                   <img
-                    src={ch.images?.large || img}
+                    src={img}
                     alt={ch.name}
-                    className="max-h-[85vh] max-w-[90vw] rounded object-contain"
+                    loading="lazy"
+                    decoding="async"
+                    // 3:4 竖版固定框：竖长图裁顶部（保留脸部），横宽图垂直放满、水平居中
+                    className="aspect-[3/4] w-16 rounded-md object-cover object-top transition-opacity hover:opacity-80"
                   />
-                </DialogContent>
-              </Dialog>
-            ) : (
-              <div className="aspect-[3/4] w-16 rounded-md bg-muted/60" />
+                ) : (
+                  <div className="aspect-[3/4] w-16 rounded-md bg-muted/60" />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={open}
+                className="line-clamp-2 w-full cursor-pointer text-xs leading-tight underline-offset-2 hover:underline"
+                title={`查看角色：${ch.name}`}
+              >
+                {ch.name}
+              </button>
+              {subtitle && (
+                <span className="line-clamp-1 w-full text-[10px] leading-tight text-muted-foreground/80">
+                  {subtitle}
+                </span>
+              )}
+              {cvs.length > 0 && (
+                <span className="line-clamp-1 w-full text-[10px] leading-tight">
+                  {cvs.slice(0, 2).map((cv, i) => (
+                    <button
+                      key={`${cv.id}-${i}`}
+                      type="button"
+                      className="cursor-pointer text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                      title={`查看声优：${cv.name}${
+                        cvs.length > 2 ? `（共 ${cvs.length} 位）` : ""
+                      }`}
+                      onClick={() =>
+                        cv.id &&
+                        onOpenPerson({
+                          kind: "person",
+                          id: cv.id,
+                          name: cv.name,
+                          images: cv.images,
+                        })
+                      }
+                    >
+                      {i > 0 && " / "}CV {cv.name}
+                    </button>
+                  ))}
+                  {cvs.length > 2 && (
+                    <span className="text-muted-foreground">
+                      {" "}
+                      等 {cvs.length} 位
+                    </span>
+                  )}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {data.length > CHARACTERS_PREVIEW && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex cursor-pointer items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ChevronDown
+            className={cn(
+              "size-3.5 transition-transform",
+              !expanded && "-rotate-90",
             )}
-            <span className="line-clamp-2 text-xs leading-tight">
-              {ch.name}
-            </span>
-            {cv?.name && (
-              <span className="line-clamp-1 text-[10px] leading-tight text-muted-foreground">
-                CV {cv.name}
-              </span>
-            )}
-          </div>
-        );
-      })}
+          />
+          {expanded ? "收起" : `查看全部 ${data.length} 位`}
+        </button>
+      )}
     </div>
   );
 }
@@ -331,18 +398,38 @@ function RecsSection({
   );
 }
 
-/** 角色/CV 区块：滚动可见才请求，无数据静默降级、重拉失败保留旧内容 */
+/** 角色/CV 区块：滚动可见才请求，无数据静默降级、重拉失败保留旧内容；点卡片开角色/声优弹窗 */
 function CharactersLazy({ subjectId }: { subjectId: number }) {
   const { ref, inView } = useInViewOnce<HTMLDivElement>();
   const q = useSubjectCharacters(subjectId, inView);
-  const { hasData, hidden } = p1SectionState(q.data, q.isPending);
+  const items = q.data?.items;
+  const { hasData, hidden } = p1SectionState(items, q.isPending);
+  const [characterTarget, setCharacterTarget] =
+    useState<PersonDialogTarget | null>(null);
+  const [personTarget, setPersonTarget] = useState<PersonDialogTarget | null>(
+    null,
+  );
   return (
     <div ref={ref}>
       {hidden ? null : (
         <SectionBody title="角色 / CV" skeleton="avatars" hasData={hasData}>
-          {q.data ? <CharactersSection data={q.data} /> : null}
+          {items ? (
+            <CharactersSection
+              data={items}
+              onOpenCharacter={setCharacterTarget}
+              onOpenPerson={setPersonTarget}
+            />
+          ) : null}
         </SectionBody>
       )}
+      <PersonDetailDialog
+        target={characterTarget}
+        onOpenChange={(o) => !o && setCharacterTarget(null)}
+      />
+      <PersonDetailDialog
+        target={personTarget}
+        onOpenChange={(o) => !o && setPersonTarget(null)}
+      />
     </div>
   );
 }
@@ -351,13 +438,14 @@ function CharactersLazy({ subjectId }: { subjectId: number }) {
 function RelationsLazy({ subjectId }: { subjectId: number }) {
   const { ref, inView } = useInViewOnce<HTMLDivElement>();
   const q = useSubjectRelations(subjectId, inView);
+  const items = q.data?.items;
   const nav = useP1SubjectDialog();
-  const { hasData, hidden } = p1SectionState(q.data, q.isPending);
+  const { hasData, hidden } = p1SectionState(items, q.isPending);
   return (
     <div ref={ref}>
       {hidden ? null : (
         <SectionBody title="关联条目" skeleton="cards" hasData={hasData}>
-          {q.data ? <RelationsSection data={q.data} nav={nav} /> : null}
+          {items ? <RelationsSection data={items} nav={nav} /> : null}
         </SectionBody>
       )}
       {nav.element}
@@ -369,13 +457,14 @@ function RelationsLazy({ subjectId }: { subjectId: number }) {
 function RecsLazy({ subjectId }: { subjectId: number }) {
   const { ref, inView } = useInViewOnce<HTMLDivElement>();
   const q = useSubjectRecs(subjectId, inView);
+  const items = q.data?.items;
   const nav = useP1SubjectDialog();
-  const { hasData, hidden } = p1SectionState(q.data, q.isPending);
+  const { hasData, hidden } = p1SectionState(items, q.isPending);
   return (
     <div ref={ref}>
       {hidden ? null : (
         <SectionBody title="相关推荐" skeleton="cards" hasData={hasData}>
-          {q.data ? <RecsSection data={q.data} nav={nav} /> : null}
+          {items ? <RecsSection data={items} nav={nav} /> : null}
         </SectionBody>
       )}
       {nav.element}

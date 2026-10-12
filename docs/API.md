@@ -347,6 +347,11 @@ Web 端「近期注目」榜（`bangumi.tv/anime/browser/?sort=trends`）的数�
 - 部分条目三接口均返回 `{"data":[],"total":0}`（服务端无数据），UI 按空数据隐藏区块，非异常
 - 数据完整度不稳定（如 EVA TV 版 characters/recs 为空、relations 有值），三区块需独立降级
 - 归一化映射：`character`/`subject` 内层 → 扁平条目；`casts[].person` → `cast[]`；`relation.cn||en` → `relation` 字符串；`subject.rating.score` → `score`
+- **characters 未传 limit/offset，响应即服务端给到的全量**（`total` 保留供截断校验，2026-10 接入「查看全部」后待实测大阵容条目是否截断）；条目 `type` 数值语义（1=主角/2=配角/3=客串）为推测映射，待实测确认
+
+### GET /p1/characters/{id}・/p1/persons/{id} 角色/声优详情（在用，形状待实测）
+
+角色/声优弹窗（`src/components/PersonDetailDialog.tsx`）的数据源，公开接口无需鉴权。**响应形状未实测**（仅上游 p1.yaml 登记）：`p1.ts` 的 `normalizePerson` 宽松归一化——`name`/`nameCN`(或 `nicename`)/`images`/`summary`/`career[]` 能取多少取多少，缺失字段静默为 undefined，弹窗 UI 降级（暂无简介/占位头图）。实测后在此补记形状。
 
 ### 其余 p1 接口（参考，未使用）
 
@@ -356,7 +361,7 @@ Web 端「近期注目」榜（`bangumi.tv/anime/browser/?sort=trends`）的数�
 |---|---|
 | 热度 | `/p1/trending/subjects`、`/p1/trending/subjects/topics` |
 | 条目 | `/p1/subjects`、`/p1/subjects/{subjectID}`、`{id}/comments`、`{id}/episodes`、`{id}/reviews`、`{id}/staffs/persons`、`{id}/staffs/positions`、`{id}/topics`、`/p1/subjects/-/posts/{postID}`、`/p1/subjects/-/topics/{topicID}`(+`/replies`)（`{id}/characters`、`{id}/recs`、`{id}/relations` 已在用，见上文） |
-| 角色/人物 | `/p1/characters/{characterID}`(+`/casts`、`/collects`、`/comments`)、`/p1/persons/{personID}`(+`/casts`、`/collects`、`/comments`、`/works`) |
+| 角色/人物 | `/p1/characters/{characterID}`(+`/casts`、`/collects`、`/comments`)、`/p1/persons/{personID}`(+`/casts`、`/collects`、`/comments`、`/works`)（`/p1/characters/{id}`、`/p1/persons/{id}` 本体已在用，见上文） |
 | 收藏 | `/p1/collections/subjects`、`/p1/collections/subjects/{subjectID}`、`/p1/collections/characters`、`/p1/collections/persons`、`/p1/collections/indexes`、`/p1/collections/episodes/{episodeID}`、`/p1/users/{username}/collections/{subjects\|characters\|persons\|indexes}` |
 | 日历 | `/p1/calendar` |
 | 用户 | `/p1/me`、`/p1/users/{username}`(+`/followers`、`/friends`、`/groups`、`/indexes`、`/timeline`、`/blogs`)、`/p1/followers`、`/p1/friends` |
