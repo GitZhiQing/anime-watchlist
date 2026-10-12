@@ -4,6 +4,7 @@ import { Separator } from "@/components/ui/separator";
 
 const LINKS = [
   { label: "项目仓库", href: "https://github.com/GitZhiQing/anime-watchlist" },
+  { label: "问题反馈", href: "https://github.com/GitZhiQing/anime-watchlist/issues" },
   { label: "Bangumi 官网", href: "https://bgm.tv" },
 ];
 
