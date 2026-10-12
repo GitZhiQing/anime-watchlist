@@ -173,6 +173,8 @@ token 响应：
 
 `filter.type`：选了具体类型时为 `[subjectType]` 单类型精确搜索；未选时为全部 5 类型 `[2,1,3,4,6]`（动画优先）。**注意 `SubjectType` 枚举无 5**：1=Book、2=Anime、3=Music、4=Game、6=Real。
 
+**高级筛选（2026-10 接入，服务端支持度待实测）**：`filter` 另支持 `air_date`（区间串，如 `">=2020-01-01,<=2021-12-31"`，单边亦可）、`rating`（如 `">=8"`）、`nsfw`（布尔，仅勾选「包含 R18」时传 `true`）。字段语法以官方 v0 spec（见文末参考链接 `api.yml`）为准；实测后在此补记各字段实际生效情况。
+
 #### GET /v0/subjects/{subject_id} 条目完整详情
 
 **列表接口只返回 `SlimSubject`**（`short_summary` / 顶层 `score`）；`summary`、`rating.score`、`collection`、`total_episodes` 等完整字段**仅此接口有**（`Subject`）。缓存 30min。展开详情（`SubjectDetailView.tsx`）时按需拉取。

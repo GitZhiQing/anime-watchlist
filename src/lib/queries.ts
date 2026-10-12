@@ -28,6 +28,7 @@ import {
   getEpisodes,
   getSeasonSubjects,
   type CollectionPatch,
+  type SearchSubjectFilter,
 } from "@/lib/bgm";
 import { getTrendingSubjects, deriveCalendarTrending } from "@/lib/trending";
 import {
@@ -365,18 +366,19 @@ export function usePatchCollection() {
 // ===== 搜索 / 日历 / 热度 =====
 
 /**
- * 搜索（翻页）。subjectType 入 cache key，切换类型自动重搜。
+ * 搜索（翻页）。subjectType 与高级筛选入 cache key，切换即自动重搜。
  * useInfiniteQuery：pageParam 为 offset，每页 limit 20。
  */
 export function useSearchSubjects(
   keyword: string,
   subjectType: SubjectType | undefined,
+  adv: SearchSubjectFilter | undefined,
   enabled: boolean,
 ) {
   return useInfiniteQuery<SearchResponse>({
-    queryKey: ["search", keyword, subjectType],
+    queryKey: ["search", keyword, subjectType, adv ?? null],
     queryFn: ({ pageParam }) =>
-      searchSubjects(keyword, subjectType, 20, pageParam as number),
+      searchSubjects(keyword, subjectType, 20, pageParam as number, adv),
     initialPageParam: 0,
     getNextPageParam: (last) =>
       last.offset + last.data.length < last.total

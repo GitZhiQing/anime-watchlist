@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BookHeart, CalendarDays, Info, Loader2, Search, Settings } from "lucide-react";
+import { BarChart3, BookHeart, CalendarDays, Info, Loader2, Search, Settings } from "lucide-react";
 import { useQueries } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { PageLayout } from "@/components/layout/PageLayout";
@@ -8,6 +8,7 @@ import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { Config } from "@/pages/Config";
 import { WatchlistPage } from "@/pages/Watchlist";
 import { Collection } from "@/pages/Collection";
+import { StatsPage } from "@/pages/Stats";
 import { About } from "@/pages/About";
 import { Calendar } from "@/pages/Calendar";
 import { useAuthUser } from "@/hooks/useAuthUser";
@@ -22,7 +23,13 @@ import {
 import type { UserCollection } from "@/types/bgm";
 import { cn } from "@/lib/utils";
 
-export type PageKey = "watchlist" | "collection" | "config" | "about" | "calendar";
+export type PageKey =
+  | "watchlist"
+  | "collection"
+  | "stats"
+  | "config"
+  | "about"
+  | "calendar";
 
 /** 追番列表排序方式 */
 export type WatchSortKey = "default" | "collect" | "score" | "name" | "updated";
@@ -79,6 +86,7 @@ const NAV: {
   { key: "watchlist", label: "追番", title: "追番", icon: BookHeart },
   { key: "calendar", label: "新番", title: "新番", icon: CalendarDays },
   { key: "collection", label: "找番", title: "找番", icon: Search },
+  { key: "stats", label: "统计", title: "统计", icon: BarChart3 },
   { key: "config", label: "配置", title: "配置", icon: Settings },
   { key: "about", label: "关于", title: "关于", icon: Info },
 ];
@@ -126,7 +134,8 @@ export default function App() {
   const queries = useQueries({
     queries: SUBJECT_TYPES.map((subjectType) => ({
       ...collectionsQueryOptions(username!, subjectType),
-      enabled: !!username && watchlistVisited,
+      // 统计页同样消费收藏数据：进入统计页也启用拉取
+      enabled: !!username && (watchlistVisited || page === "stats"),
     })),
   });
 
@@ -345,6 +354,9 @@ export default function App() {
               </div>
             );
           })}
+          {page === "stats" && (
+            <StatsPage bySubjectType={bySubjectType} onNavigate={navigate} />
+          )}
           {page === "config" && <Config />}
           {page === "about" && <About />}
         </main>

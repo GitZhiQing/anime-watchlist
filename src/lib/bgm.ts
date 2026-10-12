@@ -226,21 +226,37 @@ export async function bgmRequest<T>(
 
 // ===== 高层 API 封装 =====
 
+/** 搜索高级筛选（v0 search filter 子集）。字段语法以官方 v0 spec 为准、
+ *  服务端支持度待实测（项目 API.md 原未覆盖），见 docs/API.md 搜索章节。 */
+export interface SearchSubjectFilter {
+  /** 年份区间（含端点），转 air_date ">=YYYY-01-01,<=YYYY-12-31" */
+  yearFrom?: number;
+  yearTo?: number;
+  /** 最低评分，转 rating ">=N" */
+  minRating?: number;
+  /** 包含 R18（false = 显式排除；默认排除，避免依赖服务端缺省行为） */
+  nsfw?: boolean;
+}
+
 export function searchSubjects(
   keyword: string,
   subjectType?: SubjectType,
   limit = 20,
   offset = 0,
+  adv?: SearchSubjectFilter,
 ): Promise<SearchResponse> {
+  const filter: Record<string, unknown> = {
+    // subjectType 省略（全部）→ 5 种类型；否则单类型精确搜索
+    type: subjectType ? [subjectType] : SUBJECT_TYPES,
+  };
+  if (adv?.yearFrom) filter.air_date = `>=${adv.yearFrom}-01-01`;
+  if (adv?.yearTo) filter.air_date = `${filter.air_date ?? ""},<=${adv.yearTo}-12-31`;
+  if (adv?.minRating) filter.rating = `>=${adv.minRating}`;
+  if (adv?.nsfw) filter.nsfw = true;
   return bgmRequest<SearchResponse>("/v0/search/subjects", {
     method: "POST",
     query: { limit, offset },
-    body: {
-      keyword,
-      sort: "match",
-      // subjectType 省略（全部）→ 5 种类型；否则单类型精确搜索
-      filter: { type: subjectType ? [subjectType] : SUBJECT_TYPES },
-    },
+    body: { keyword, sort: "match", filter },
   });
 }
 

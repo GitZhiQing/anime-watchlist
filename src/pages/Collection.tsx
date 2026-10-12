@@ -1,8 +1,10 @@
 import { useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowDownWideNarrow, Check, ChevronDown, Filter, Flame, Loader2, RefreshCw, X } from "lucide-react";
+import { ArrowDownWideNarrow, Check, ChevronDown, Filter, Flame, Loader2, RefreshCw, SlidersHorizontal, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   DropdownMenu,
@@ -21,6 +23,7 @@ import { SUBJECT_LABELS, SUBJECT_TYPES, SubjectType } from "@/types/bgm";
 import { cn } from "@/lib/utils";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { usePersistentState } from "@/hooks/usePersistentState";
+import type { SearchSubjectFilter } from "@/lib/bgm";
 import type { PageKey } from "@/App";
 
 const MAX_HISTORY = 10;
@@ -169,8 +172,55 @@ export function Collection({ visited = true, onNavigate }: CollectionProps) {
     ? (storedType as SubjectType)
     : undefined;
 
+  // 高级筛选（会话内不持久化）：改动即重搜（filter 入 query key）
+  const [advFilter, setAdvFilter] = useState<SearchSubjectFilter | undefined>();
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [yearFromText, setYearFromText] = useState("");
+  const [yearToText, setYearToText] = useState("");
+  const activeFilterCount = [
+    advFilter?.yearFrom,
+    advFilter?.yearTo,
+    advFilter?.minRating,
+    advFilter?.nsfw,
+  ].filter((v) => v !== undefined).length;
+
+  /** 应用年份区间（失焦/回车触发；非法输入按未填处理） */
+  function applyYear(from: string, to: string) {
+    const parse = (s: string) => {
+      const n = parseInt(s, 10);
+      return !isNaN(n) && n >= 1900 && n <= 2100 ? n : undefined;
+    };
+    const f = parse(from);
+    const t = parse(to);
+    setYearFromText(f ? String(f) : "");
+    setYearToText(t ? String(t) : "");
+    setAdvFilter((prev) => {
+      const next = { ...prev, yearFrom: f, yearTo: t };
+      return normalizeAdv(next);
+    });
+  }
+
+  /** 无任何生效字段的筛选对象归一为 undefined（保持 query key 干净） */
+  function normalizeAdv(f: SearchSubjectFilter | undefined): SearchSubjectFilter | undefined {
+    if (!f) return f;
+    if (
+      f.yearFrom === undefined &&
+      f.yearTo === undefined &&
+      f.minRating === undefined &&
+      !f.nsfw
+    )
+      return undefined;
+    return f;
+  }
+
+  function clearFilter() {
+    setAdvFilter(undefined);
+    setYearFromText("");
+    setYearToText("");
+  }
+
   const { data, isFetching, error, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
-    useSearchSubjects(submitted ?? "", subjectType, !!submitted);
+    useSearchSubjects(submitted ?? "", subjectType, advFilter, !!submitted);
   const results = data?.pages.flatMap((p) => p.data) ?? [];
   const total = data?.pages[0]?.total ?? 0;
 
@@ -223,6 +273,24 @@ export function Collection({ visited = true, onNavigate }: CollectionProps) {
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
+          )}
+          {/* 高级筛选（仅搜索态）：切换下方筛选行显隐，有生效筛选时带计数 */}
+          {submitted && (
+            <Button
+              variant="outline"
+              size="sm"
+              className={cn("gap-1", activeFilterCount > 0 && "border-primary/50 text-primary")}
+              title="高级筛选（年份 / 评分 / R18）"
+              onClick={() => setFilterOpen((o) => !o)}
+            >
+              <SlidersHorizontal className="size-3.5" />
+              筛选
+              {activeFilterCount > 0 && (
+                <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px] leading-none">
+                  {activeFilterCount}
+                </Badge>
+              )}
+            </Button>
           )}
           <ViewTabs value={view} onChange={setViewMode} />
         </>
@@ -308,6 +376,89 @@ export function Collection({ visited = true, onNavigate }: CollectionProps) {
             )}
           </Button>
         </form>
+
+        {/* 高级筛选行（仅搜索态；工具栏「筛选」切换，有生效筛选时保持显示）。改动立即重搜 */}
+        {submitted && (filterOpen || activeFilterCount > 0) && (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-xs text-muted-foreground">年份</span>
+            <Input
+              type="number"
+              value={yearFromText}
+              onChange={(e) => setYearFromText(e.target.value)}
+              onBlur={() => applyYear(yearFromText, yearToText)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              }}
+              placeholder="起"
+              aria-label="起始年份"
+              className="h-8 w-20 px-2 text-center text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+            <span className="text-xs text-muted-foreground">—</span>
+            <Input
+              type="number"
+              value={yearToText}
+              onChange={(e) => setYearToText(e.target.value)}
+              onBlur={() => applyYear(yearFromText, yearToText)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              }}
+              placeholder="止"
+              aria-label="结束年份"
+              className="h-8 w-20 px-2 text-center text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 gap-1">
+                  {advFilter?.minRating ? `${advFilter.minRating}+ 分` : "评分不限"}
+                  <ChevronDown className="size-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                {[undefined, 6, 7, 8, 9].map((n) => (
+                  <DropdownMenuItem
+                    key={n ?? "all"}
+                    onClick={() =>
+                      setAdvFilter((prev) =>
+                        normalizeAdv({ ...prev, minRating: n }),
+                      )
+                    }
+                  >
+                    <Check
+                      className={cn(
+                        "size-3.5",
+                        advFilter?.minRating === n || (n === undefined && !advFilter?.minRating)
+                          ? "opacity-100"
+                          : "opacity-0",
+                      )}
+                    />
+                    {n ? `${n}+ 分` : "评分不限"}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Checkbox
+                checked={advFilter?.nsfw ?? false}
+                onCheckedChange={(v) =>
+                  setAdvFilter((prev) =>
+                    normalizeAdv({ ...prev, nsfw: v === true ? true : undefined }),
+                  )
+                }
+              />
+              包含 R18
+            </label>
+            {activeFilterCount > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-xs"
+                onClick={clearFilter}
+              >
+                清除全部
+              </Button>
+            )}
+          </div>
+        )}
 
         {history.length > 0 && (
           <div className="space-y-1.5">
