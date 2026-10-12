@@ -178,11 +178,16 @@ export function useUserCollectionSmart(
     return loaded ? (hit ?? null) : undefined;
   }, [listQueries, subjectId]);
 
+  // 列表正在拉取（首次加载/手动刷新）时挂起单条 fallback：该条目大概率就在
+  // 加载中的列表里，立即单条 GET 是一次可避免的多余请求；列表落地后 cached
+  // 自然给出答案（命中→零请求，未含→null 无需请求，出错→fallback 照常启用）。
+  const anyListFetching = listQueries.some((q) => q.fetchStatus === "fetching");
+
   const fallback = useQuery<UserCollection | null>({
     queryKey: ["collection", username, subjectId],
     queryFn: () => getUserCollection(username!, subjectId),
     staleTime: STALE.collectionOne,
-    enabled: !!username && cached === undefined,
+    enabled: !!username && cached === undefined && !anyListFetching,
   });
 
   if (cached !== undefined) {
@@ -196,7 +201,8 @@ export function useUserCollectionSmart(
   }
   return {
     data: fallback.data,
-    isLoading: fallback.isLoading,
+    // 挂起等待列表落地期间保持加载语义（disabled 的 fallback 不会自带 isFetching）
+    isLoading: fallback.isLoading || anyListFetching,
     error: fallback.error,
     refetch: fallback.refetch,
   };
@@ -228,18 +234,28 @@ export function patchCachedCollections(
   if (single) qc.setQueryData(singleKey, { ...single, ...patch });
 }
 
-/** 回滚：恢复快照（列表 + 单条）。prevSingle 为 undefined 表示快照时无缓存。 */
+/**
+ * 回滚：恢复快照（列表 + 单条）。prevSingle 为 undefined 表示快照时无缓存。
+ * written 为本次乐观写入触碰过的缓存值引用（key → 写入后的引用）：
+ * 回滚前比对当前引用——若已被其他写入（并发 mutation 的乐观更新/回滚/列表
+ * refetch 落地）替换，说明有更新的数据存在，跳过该 key，避免互抹。
+ */
 function rollbackCollections(
   qc: QueryClient,
   lists: Array<[QueryKey, UserCollection[] | undefined]>,
   singleKey: QueryKey,
   prevSingle: UserCollection | null | undefined,
+  written: Map<QueryKey, unknown>,
 ) {
   for (const [key, data] of lists) {
+    if (written.has(key) && qc.getQueryData(key) !== written.get(key)) continue;
     // 快照时无数据的 key 不能回填空数组（会被误判为"已加载且为空"），只能移除
     if (data === undefined) qc.removeQueries({ queryKey: key });
     else qc.setQueryData(key, data);
   }
+  const singleTouched =
+    written.has(singleKey) && qc.getQueryData(singleKey) !== written.get(singleKey);
+  if (singleTouched) return;
   if (prevSingle === undefined) qc.removeQueries({ queryKey: singleKey });
   else qc.setQueryData(singleKey, prevSingle);
 }
@@ -278,12 +294,16 @@ export function useSetCollection() {
     }: CollectionMutateVars & { type: number; subject?: SlimSubject }) =>
       setCollection(subjectId, type),
     onMutate: async ({ subjectId, username, type, subject }) => {
+      // 同时取消单条与列表的 in-flight 请求：列表 refetch 若在 mutation 后落地，
+      // 会以服务端旧数据覆盖乐观插入
       await qc.cancelQueries({ queryKey: ["collection", username, subjectId] });
+      await qc.cancelQueries({ queryKey: ["collections", username] });
       const lists = qc.getQueriesData<UserCollection[]>({
         queryKey: ["collections", username],
       });
       const singleKey = ["collection", username, subjectId] as const;
       const prevSingle = qc.getQueryData<UserCollection | null>(singleKey);
+      const written = new Map<QueryKey, unknown>();
       if (username && subject) {
         const stub: UserCollection = {
           subject_id: subjectId,
@@ -310,12 +330,25 @@ export function useSetCollection() {
           }
         }
         qc.setQueryData(singleKey, stub);
+        // 记录乐观写入后的引用，供回滚守卫比对
+        for (const [key] of lists) {
+          const cur = qc.getQueryData(key);
+          if (cur !== undefined) written.set(key, cur);
+        }
+        written.set(singleKey, stub);
       }
-      return { lists, prevSingle, singleKey };
+      return { lists, prevSingle, singleKey, written };
     },
     onSuccess: (_d, { username, subjectId }) => settle(username, subjectId),
     onError: (_e, _vars, ctx) => {
-      if (ctx) rollbackCollections(qc, ctx.lists, ctx.singleKey, ctx.prevSingle);
+      if (ctx)
+        rollbackCollections(
+          qc,
+          ctx.lists,
+          ctx.singleKey,
+          ctx.prevSingle,
+          ctx.written,
+        );
     },
   });
 }
@@ -339,12 +372,15 @@ export function usePatchCollection() {
       }),
     onMutate: async ({ subjectId, username, currentPrivate, ...patch }) => {
       void currentPrivate; // 仅参与请求体组装，不写入缓存
+      // 同时取消单条与列表的 in-flight 请求，防止 refetch 落地覆盖乐观写入
       await qc.cancelQueries({ queryKey: ["collection", username, subjectId] });
+      await qc.cancelQueries({ queryKey: ["collections", username] });
       const lists = qc.getQueriesData<UserCollection[]>({
         queryKey: ["collections", username],
       });
       const singleKey = ["collection", username, subjectId] as const;
       const prevSingle = qc.getQueryData<UserCollection | null>(singleKey);
+      const written = new Map<QueryKey, unknown>();
       if (username) {
         // CollectionPatch.type 是 number，UserCollection.type 是 CollectionType，直写缓存需收窄
         patchCachedCollections(
@@ -353,12 +389,26 @@ export function usePatchCollection() {
           subjectId,
           patch as Partial<UserCollection>,
         );
+        // 记录乐观写入后的引用，供回滚守卫比对（未命中的 key 引用未变，回滚等价无操作）
+        for (const [key] of lists) {
+          const cur = qc.getQueryData(key);
+          if (cur !== undefined) written.set(key, cur);
+        }
+        const curSingle = qc.getQueryData(singleKey);
+        if (curSingle !== undefined) written.set(singleKey, curSingle);
       }
-      return { lists, prevSingle, singleKey };
+      return { lists, prevSingle, singleKey, written };
     },
     onSuccess: (_d, { username, subjectId }) => settle(username, subjectId),
     onError: (_e, _vars, ctx) => {
-      if (ctx) rollbackCollections(qc, ctx.lists, ctx.singleKey, ctx.prevSingle);
+      if (ctx)
+        rollbackCollections(
+          qc,
+          ctx.lists,
+          ctx.singleKey,
+          ctx.prevSingle,
+          ctx.written,
+        );
     },
   });
 }
@@ -380,10 +430,13 @@ export function useSearchSubjects(
     queryFn: ({ pageParam }) =>
       searchSubjects(keyword, subjectType, 20, pageParam as number, adv),
     initialPageParam: 0,
-    getNextPageParam: (last) =>
-      last.offset + last.data.length < last.total
-        ? last.offset + last.data.length
-        : undefined,
+    getNextPageParam: (last) => {
+      const next = last.offset + last.data.length;
+      // 空页防御：服务端返回空页且未达 total 时，next 会与当前 offset 相同，
+      // 不拦截会反复拉同一空页
+      if (next <= last.offset) return undefined;
+      return next < last.total ? next : undefined;
+    },
     staleTime: STALE.search,
     enabled: enabled && !!keyword.trim(),
   });

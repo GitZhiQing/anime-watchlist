@@ -1,7 +1,7 @@
 // Bangumi 数据类型，依据官方 v0 OpenAPI 规范（https://github.com/bangumi/api/blob/master/open-api/v0.yaml）
 // 与 TMP.json 样例定义。接口说明见 docs/API.md。
 
-/** 条目类型 SubjectType。本应用只用 Book(1)=漫画 / Anime(2)=动画 */
+/** 条目类型 SubjectType。5 类全量使用（收藏列表/备份/统计/筛选），5 不存在 */
 export enum SubjectType {
   Book = 1,
   Anime = 2,
@@ -309,21 +309,24 @@ export interface TrendingItem {
 }
 
 // ===== p1 条目扩展信息（角色/关联/推荐） =====
-// 私有接口、无官方文档：类型保持宽松，渲染端对字段缺失容错，请求失败静默降级。
+// 私有接口、无官方文档且形状会漂移：类型按 p1.ts 宽松归一化的真实产出声明——
+// 除「归一化恒构造」的字段（P1Character.cast、P1Relation.relation 的空串兜底）外，
+// 顶层字段（含 id/name）都可能缺失，渲染端必须容错（口径同 P1PersonDetail）。
 
 /** /p1/subjects/{id}/characters 单条：角色 + CV 列表 */
 export interface P1Character {
-  id: number;
-  name: string;
+  id?: number;
+  name?: string;
   nicename?: string;
   type?: number;
   images?: SubjectImages;
   subjectID?: number;
   /** 角色在剧集中的署名（如「主人公」） */
   characterName?: string;
+  /** p1.ts 归一化恒构造（旧 cast / 新 casts[].person 拍平），必为数组 */
   cast: Array<{
-    id: number;
-    name: string;
+    id?: number;
+    name?: string;
     type?: number;
     images?: SubjectImages | null;
     lang?: string;
@@ -334,11 +337,12 @@ export interface P1Character {
 
 /** /p1/subjects/{id}/relations 单条 */
 export interface P1Relation {
-  id: number;
-  name: string;
-  nameCN: string;
-  type: number;
+  id?: number;
+  name?: string;
+  nameCN?: string;
+  type?: number;
   images?: SubjectImages;
+  /** p1.ts 归一化带空串兜底，恒为 string */
   relation: string;
 }
 
@@ -348,7 +352,7 @@ export interface P1RecItem {
   id?: number;
   /** 条目类型（嵌套 subject 形状下存在），供应用内详情弹窗乐观插入归类 */
   type?: number;
-  name: string;
+  name?: string;
   nameCN?: string;
   score?: number;
   rank?: number;

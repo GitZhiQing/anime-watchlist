@@ -3,7 +3,7 @@
 // 统一注入 UA + Bearer token，处理 401 自动刷新（刷新加锁、失败清登录态）。
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { emit } from "@tauri-apps/api/event";
-import { StoreKeys, clearAuth, getStore, setStore } from "@/lib/store";
+import { StoreKeys, clearAuth, getStore, setStores } from "@/lib/store";
 import { getProxy } from "@/lib/proxy";
 import { SubjectType, SUBJECT_TYPES } from "@/types/bgm";
 import type {
@@ -102,18 +102,40 @@ async function doRefresh(): Promise<void> {
       redirect_uri: redirectUri,
     }),
     connectTimeout: 10_000,
+    signal: AbortSignal.timeout(20_000),
     ...(proxy ? { proxy } : {}),
   });
   if (!res.ok) {
-    throw new BgmError(res.status, "刷新令牌失败，请重新认证");
+    // 尽量透传 OAuth 错误描述（invalid_grant 等）辅助排障
+    let msg = "刷新令牌失败，请重新认证";
+    try {
+      const text = await res.text();
+      if (text) {
+        const err = JSON.parse(text);
+        if (err?.error_description || err?.error) {
+          msg = `${msg}：${err.error_description ?? err.error}`;
+        }
+      }
+    } catch {
+      /* body 非 JSON（如网关页），保持默认文案 */
+    }
+    throw new BgmError(res.status, msg);
   }
-  const token = (await res.json()) as OAuthTokenResponse;
-  await setStore(StoreKeys.accessToken, token.access_token);
-  await setStore(StoreKeys.refreshToken, token.refresh_token);
-  await setStore(
-    StoreKeys.expiresAt,
-    Date.now() + token.expires_in * 1000,
-  );
+  const tokenText = await res.text();
+  let token: OAuthTokenResponse;
+  try {
+    token = JSON.parse(tokenText) as OAuthTokenResponse;
+  } catch {
+    // 2xx 但非 JSON（代理注入页面等）：不能当作「已刷新成功」，抛错走错误分类
+    throw new BgmError(res.status, "刷新令牌响应不是有效 JSON");
+  }
+  // token 三键强关联（Bangumi 刷新会轮换 refresh_token），批量单次落盘：
+  // 分次写盘若在间隙中断会留下「新 access + 已作废旧 refresh」无法恢复。
+  await setStores([
+    [StoreKeys.accessToken, token.access_token],
+    [StoreKeys.refreshToken, token.refresh_token],
+    [StoreKeys.expiresAt, Date.now() + token.expires_in * 1000],
+  ]);
 }
 
 /**
@@ -136,6 +158,10 @@ interface BgmRequestOpts {
   /** 是否需要认证（默认 true） */
   auth?: boolean;
 }
+
+/** 单请求整体超时：覆盖连接建立后的慢响应/挂死连接（connectTimeout 只管连接阶段）。
+ *  AbortSignal.timeout 经 plugin-http 的 fetch_cancel 真取消 Rust 侧请求。 */
+const REQUEST_TIMEOUT_MS = 30_000;
 
 /** 统一请求 v0 API。401 时自动尝试刷新一次。 */
 export async function bgmRequest<T>(
@@ -172,6 +198,8 @@ export async function bgmRequest<T>(
           ? JSON.stringify(body)
           : undefined,
       connectTimeout: 15_000,
+      // 每次调用生成新 signal：401 刷新后的重试从零重新计时
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       ...(proxy ? { proxy } : {}),
     });
 
@@ -182,7 +210,10 @@ export async function bgmRequest<T>(
   if (res.status === 401 && auth) {
     try {
       await refreshAccessToken();
-      headers["Authorization"] = `Bearer ${(await getAccessToken())!}`;
+      // 刷新成功的间隙可能被并发流程 clearAuth（token 为空）：
+      // 此时不带 Authorization 重发 → 401 → 落入下方「刷新后仍拒绝」分支统一处理。
+      const fresh = await getAccessToken();
+      if (fresh) headers["Authorization"] = `Bearer ${fresh}`;
       res = await doFetch();
     } catch (e) {
       // 刷新本身抛错：
@@ -214,13 +245,19 @@ export async function bgmRequest<T>(
     }
     throw new BgmError(res.status, msg);
   }
-  // 204 或空 body（如收藏 POST 返回无内容）：先读 text，空则返回 undefined
+  // 204 或空 body（如收藏 POST 返回无内容）：先读 text，空则返回 undefined。
+  // 注意：body 非空但非 JSON（如代理注入的错误页）不走 undefined——那会把
+  // 「解析失败」静默成「无数据」，调用方拿到 undefined 解引用会抛无上下文的
+  // TypeError；显式抛 BgmError 让上层错误分类/降级逻辑可感知。
   const text = await res.text();
   if (!text) return undefined as T;
   try {
     return JSON.parse(text) as T;
   } catch {
-    return undefined as T;
+    throw new BgmError(
+      res.status,
+      `响应不是有效 JSON（前 80 字符：${text.slice(0, 80)}）`,
+    );
   }
 }
 
@@ -478,22 +515,30 @@ interface PagedEpisodes {
   offset: number;
 }
 
-/** 拉取条目全部主篇剧集（/v0/episodes，自动翻页）。 */
+/** 拉取条目全部主篇剧集（/v0/episodes，自动翻页；页数封顶 + 跨页按 id 去重）。 */
 export async function getEpisodes(subjectId: number): Promise<Episode[]> {
   const first = await bgmRequest<PagedEpisodes>("/v0/episodes", {
     query: { subject_id: subjectId, type: 0, limit: 100, offset: 0 },
   });
-  const pages = Math.ceil(first.total / (first.limit || 100));
+  const step = first.limit || 100;
+  const pages = Math.min(Math.ceil(first.total / step), MAX_PAGES);
   if (pages <= 1) return first.data;
   const rest = await mapWithConcurrency(
-    Array.from({ length: pages - 1 }, (_, i) => (i + 1) * (first.limit || 100)),
+    Array.from({ length: pages - 1 }, (_, i) => (i + 1) * step),
     (offset) =>
       bgmRequest<PagedEpisodes>("/v0/episodes", {
         query: { subject_id: subjectId, type: 0, limit: 100, offset },
       }),
     PAGE_CONCURRENCY,
   );
-  return [...first.data, ...rest.flatMap((p) => p.data)];
+  // 并发翻页期间服务端列表变动可能平移 offset 造成跨页重复，按 id 去重后按 ep 排序还原
+  const seen = new Set<number>();
+  const all = [...first.data, ...rest.flatMap((p) => p.data)].filter((e) => {
+    if (seen.has(e.id)) return false;
+    seen.add(e.id);
+    return true;
+  });
+  return all.sort((a, b) => a.ep - b.ep);
 }
 
 /**

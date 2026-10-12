@@ -31,6 +31,11 @@ function p1List(res: unknown): P1ListResult<unknown> {
       total: typeof obj.total === "number" ? obj.total : obj.data.length,
     };
   if (Array.isArray(obj?.rec)) return { items: obj.rec, total: obj.rec.length };
+  // null/undefined（空响应）按空数据静默处理；除此之外的意外形状（代理注入页、
+  // 又一次形状漂移）打一条 warn——宽松解析不 throw，但形状漂移需要可观测
+  if (res !== null && res !== undefined) {
+    console.warn("[p1] 响应形状意外（既非数组也非 {data}/{rec} 包装）", res);
+  }
   return { items: [], total: 0 };
 }
 
@@ -53,23 +58,23 @@ export async function getSubjectCharacters(
   const { items, total } = p1List(res);
   return {
     items: items.map((raw) => {
-    const it = raw as { cast?: unknown; casts?: unknown };
-    const ch = innerItem<P1Character>(raw, "character");
-    // CV：旧 cast:[{name}]，新 casts:[{person:{name}}]——拍平成旧形状
-    const castRaw: unknown[] = Array.isArray(it.casts)
-      ? it.casts
-      : Array.isArray(it.cast)
-        ? it.cast
-        : [];
-    const cast = castRaw.map((c): P1Character["cast"][number] => {
-      const o = (c ?? {}) as P1Character["cast"][number] & {
-        person?: P1Character["cast"][number];
-      };
-      return typeof o.person === "object" && o.person !== null
-        ? { ...o, ...o.person }
-        : o;
-    });
-    return { ...ch, cast };
+      const it = raw as { cast?: unknown; casts?: unknown };
+      const ch = innerItem<P1Character>(raw, "character");
+      // CV：旧 cast:[{name}]，新 casts:[{person:{name}}]——拍平成旧形状
+      const castRaw: unknown[] = Array.isArray(it.casts)
+        ? it.casts
+        : Array.isArray(it.cast)
+          ? it.cast
+          : [];
+      const cast = castRaw.map((c): P1Character["cast"][number] => {
+        const o = (c ?? {}) as P1Character["cast"][number] & {
+          person?: P1Character["cast"][number];
+        };
+        return typeof o.person === "object" && o.person !== null
+          ? { ...o, ...o.person }
+          : o;
+      });
+      return { ...ch, cast };
     }),
     total,
   };

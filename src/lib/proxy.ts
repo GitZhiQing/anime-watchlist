@@ -56,12 +56,15 @@ export async function testProxy(
   const proxy = toProxy(cfg);
   if (!proxy) return { ok: false, message: "请填写代理地址" };
   try {
-    const res = await tauriFetch(`${API_BASE}/v0/search/null?limit=1`, {
+    // 探测路径用 /v0/me 且不带 Authorization：OAuth 标准行为稳定返回 401，
+    // 响应体小；比依赖「搜索不存在关键词」的未定义行为更可靠
+    const res = await tauriFetch(`${API_BASE}/v0/me`, {
       method: "GET",
       headers: { "User-Agent": USER_AGENT },
       proxy,
       // 坏代理应快速失败，避免长时间挂起
       connectTimeout: 8000,
+      signal: AbortSignal.timeout(12_000),
     });
     // 2xx / 4xx 都说明请求确实到达了 Bangumi，即代理链路可用
     return res.status < 500

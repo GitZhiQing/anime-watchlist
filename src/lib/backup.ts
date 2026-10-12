@@ -10,6 +10,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { QueryClient } from "@tanstack/react-query";
 import {
+  AuthExpiredError,
   BgmError,
   mapWithConcurrency,
   patchCollection,
@@ -146,12 +147,29 @@ export function parseBackupPayload(text: string): BackupPayload {
   if (payload.schemaVersion !== 1) {
     throw new Error(`不支持的备份格式版本：v${payload.schemaVersion}`);
   }
+  if (typeof payload.username !== "string" || !payload.username) {
+    throw new Error("备份文件缺少导出账号名");
+  }
   if (!payload.collections || typeof payload.collections !== "object") {
     throw new Error("备份文件缺少收藏数据");
   }
   for (const [key, list] of Object.entries(payload.collections)) {
-    if (list !== undefined && !Array.isArray(list)) {
+    if (list === undefined) continue;
+    if (!Array.isArray(list)) {
       throw new Error(`备份中的收藏数据形状异常（类型 ${key}）`);
+    }
+    // 元素级校验：损坏/手改文件的坏条目会让恢复阶段以 undefined 发请求、逐条静默失败
+    for (const c of list) {
+      if (
+        typeof c !== "object" ||
+        c === null ||
+        typeof c.subject_id !== "number" ||
+        typeof c.type !== "number"
+      ) {
+        throw new Error(
+          `备份中的收藏条目形状异常（类型 ${key}，subject_id/type 缺失）`,
+        );
+      }
     }
   }
   return payload;
@@ -180,7 +198,11 @@ export async function planRestore(
   return { toAdd, toPatch, total: toAdd.length + toPatch.length };
 }
 
-/** 由备份条目构造 PATCH body（覆盖收藏夹 + 评分/进度/卷数/备注/标签；本应用恒私密）。 */
+/**
+ * 由备份条目构造 PATCH body（覆盖收藏夹 + 评分/进度/卷数/备注/标签）。
+ * private 透传统一原则：备份里存了该字段就读——把用户在网页端设为公开的
+ * 收藏重置回私密属于数据破坏；旧备份/缺省时兜底 true（本应用新增恒私密）。
+ */
 function entryPatch(c: UserCollection): CollectionPatch {
   return {
     type: c.type,
@@ -189,7 +211,7 @@ function entryPatch(c: UserCollection): CollectionPatch {
     rate: c.rate ?? 0,
     ...(c.comment ? { comment: c.comment } : {}),
     ...(c.tags && c.tags.length > 0 ? { tags: c.tags } : {}),
-    private: true,
+    private: c.private ?? true,
   };
 }
 
@@ -227,7 +249,8 @@ async function addWithPatch(c: UserCollection) {
   }
 }
 
-/** 恢复执行：并发 2 逐条进行，单条失败记录后继续；进度经 onProgress 上报。 */
+/** 恢复执行：并发 2 逐条进行，单条失败记录后继续；进度经 onProgress 上报。
+ *  认证失效（AuthExpiredError）时整体短路——继续跑只会逐条全失败。 */
 export async function runRestore(
   plan: RestorePlan,
   mode: RestoreMode,
@@ -256,6 +279,8 @@ export async function runRestore(
         else result.patched += 1;
         if (res.tagsDropped) result.tagsDropped += 1;
       } catch (e) {
+        // 认证已失效：抛出让 mapWithConcurrency 停止派发，整体 reject 提示重新认证
+        if (e instanceof AuthExpiredError) throw e;
         result.failed.push({
           subjectId: entry.subject_id,
           name:

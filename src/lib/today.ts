@@ -18,6 +18,8 @@ export function useTodayAiringIds(enabled: boolean): Set<number> | undefined {
   const [weekday, setWeekday] = useState(todayWeekday);
   useEffect(() => {
     if (!enabled) return;
+    // enabled 刚开启时立即校正一次：跨 0 点后首帧不再依赖 60s 后的首次 tick
+    setWeekday(todayWeekday());
     const timer = window.setInterval(() => setWeekday(todayWeekday()), 60_000);
     return () => window.clearInterval(timer);
   }, [enabled]);
