@@ -40,6 +40,11 @@ export type OAuthPhase =
 
 const WAIT_SECONDS = 120;
 
+// 与 Rust 侧 lib.rs 监听线程的错误字符串保持一致（stop 取消 / 120s 超时两分支）；
+// 任一侧改动文案需同步另一侧。
+const RUST_ERR_CANCELLED = "已取消";
+const RUST_ERR_TIMEOUT = "等待授权超时";
+
 export function useOAuthFlow() {
   const [phase, setPhase] = useState<OAuthPhase>({ kind: "idle" });
   const cancelRef = useRef<{ cancelled: boolean }>({ cancelled: false });
@@ -50,11 +55,41 @@ export function useOAuthFlow() {
   const credsRef = useRef<{ clientId: string; clientSecret: string } | null>(
     null,
   );
+  // 手动码提交 in-flight 守卫：授权码一次性，并发重复提交第二次必被服务端拒。
+  const exchangingRef = useRef(false);
 
   function clearTimer() {
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
+    }
+  }
+
+  function csrfErrorPhase(): OAuthPhase {
+    return {
+      kind: "error",
+      message: "CSRF 校验失败（state 不匹配），请重试",
+      tokenAlreadyStored: false,
+    };
+  }
+
+  /**
+   * 打开授权页，失败（无默认浏览器等）不抛出——置 error phase 并附上网址，
+   * 用户可手动复制到浏览器。返回是否成功。
+   */
+  async function openAuthorizeOrError(url: string): Promise<boolean> {
+    try {
+      await openAuthorizeUrl(url);
+      return true;
+    } catch (e) {
+      setPhase({
+        kind: "error",
+        message: `打开浏览器失败（${
+          e instanceof Error ? e.message : String(e)
+        }），请手动复制此网址到浏览器打开：${url}`,
+        tokenAlreadyStored: false,
+      });
+      return false;
     }
   }
 
@@ -88,21 +123,18 @@ export function useOAuthFlow() {
     setPhase({ kind: "starting-server" });
     await cancelCallbackServer();
 
-    let codePromise: ReturnType<typeof startCallbackServer>;
-    try {
-      codePromise = startCallbackServer(true); // fixed port 7359
-    } catch {
-      // invoke 本身不应同步抛错，此处仅防卫
-      setPhase({ kind: "waiting-code", remaining: 0, mode: "manual" });
-      await openAuthorizeUrl(
+    // invoke 返回 promise 不会同步抛；启动失败由下方 await codePromise 的 catch 兜住
+    // （保持 waiting-code 手动粘贴状态）。
+    const codePromise = startCallbackServer(true); // fixed port 7359
+
+    if (
+      !(await openAuthorizeOrError(
         buildAuthorizeUrl(clientId, redirectUriRef.current, state),
-      );
+      ))
+    ) {
+      await cancelCallbackServer();
       return;
     }
-
-    await openAuthorizeUrl(
-      buildAuthorizeUrl(clientId, redirectUriRef.current, state),
-    );
     setPhase({ kind: "waiting-code", remaining: 0, mode: "manual" });
 
     try {
@@ -112,11 +144,7 @@ export function useOAuthFlow() {
         return;
       }
       if (result.state !== stateRef.current) {
-        setPhase({
-          kind: "error",
-          message: "CSRF 校验失败（state 不匹配），请重试",
-          tokenAlreadyStored: false,
-        });
+        setPhase(csrfErrorPhase());
         return;
       }
       // 将收到的 code 随 phase 传递，Config 中 useEffect 自动填入输入框
@@ -126,7 +154,7 @@ export function useOAuthFlow() {
         mode: "manual",
         receivedCode: result.code,
       });
-    } catch (e) {
+    } catch {
       if (cancelRef.current.cancelled) {
         setPhase({ kind: "cancelled" });
         return;
@@ -163,15 +191,26 @@ export function useOAuthFlow() {
     setPhase({ kind: "starting-server" });
     await cancelCallbackServer(); // 清残留监听
 
-    // 监听一次 oauth-port 事件以拿到实际绑定端口（动态端口核心）。
-    let unlistenPort: UnlistenFn | undefined;
-    const portReady = new Promise<number>((resolvePort) => {
-      void listen<number>("oauth-port", (e) => {
+    // 竞态加固：先完成 "oauth-port" 事件监听注册、再 invoke 启动服务器。
+    // Rust 侧绑定端口后立即 emit（lib.rs），注册若晚于 emit 会丢事件，
+    // portReady 将永挂、流程卡死在 starting-server。listen 成功即返回 unlisten。
+    let resolvePort!: (port: number) => void;
+    const portReady = new Promise<number>((r) => (resolvePort = r));
+    let unlistenPort: UnlistenFn;
+    try {
+      unlistenPort = await listen<number>("oauth-port", (e) => {
         resolvePort(e.payload);
-      }).then((u) => {
-        unlistenPort = u;
       });
-    });
+    } catch (e) {
+      setPhase({
+        kind: "error",
+        message: `注册端口事件监听失败：${
+          e instanceof Error ? e.message : String(e)
+        }`,
+        tokenAlreadyStored: false,
+      });
+      return;
+    }
 
     const codePromise = startCallbackServer(fixedPort);
 
@@ -190,19 +229,23 @@ export function useOAuthFlow() {
       port = await Promise.race([portReady, onlyFailure]);
     } catch {
       // 绑定失败（端口全被占）→ 回退手动模式（fallbackToManual 已 setPhase manual）。
-      void unlistenPort?.();
+      unlistenPort();
       await fallbackToManual(clientId, clientSecret, state);
       return;
     }
-    void unlistenPort?.();
+    unlistenPort();
 
     redirectUriRef.current = buildRedirectUri(port);
     if (cancelRef.current.cancelled) return;
 
-    // 打开授权页（redirect_uri 用动态端口，与监听端口一致）。
-    await openAuthorizeUrl(
-      buildAuthorizeUrl(clientId, redirectUriRef.current, state),
-    );
+    // 打开授权页（redirect_uri 用动态端口，与监听端口一致）；失败置 error 不外抛。
+    if (
+      !(await openAuthorizeOrError(
+        buildAuthorizeUrl(clientId, redirectUriRef.current, state),
+      ))
+    ) {
+      return;
+    }
 
     // 进入等待回调阶段 + 倒计时。
     startCountdown();
@@ -216,11 +259,7 @@ export function useOAuthFlow() {
       }
       // CSRF 校验：state 必须与发出的一致。
       if (result.state !== stateRef.current) {
-        setPhase({
-          kind: "error",
-          message: "CSRF 校验失败（state 不匹配），请重试",
-          tokenAlreadyStored: false,
-        });
+        setPhase(csrfErrorPhase());
         return;
       }
       setPhase({ kind: "exchanging" });
@@ -240,8 +279,8 @@ export function useOAuthFlow() {
         return;
       }
       const msg = e instanceof Error ? e.message : String(e);
-      // 「已取消」「等待授权超时」是用户可预期的，归到 cancelled。
-      if (msg === "已取消" || msg === "等待授权超时") {
+      // 用户主动取消 / 等待超时是可预期结果，归到 cancelled（文案见文件头常量注释）。
+      if (msg === RUST_ERR_CANCELLED || msg === RUST_ERR_TIMEOUT) {
         setPhase({ kind: "cancelled" });
         return;
       }
@@ -259,8 +298,10 @@ export function useOAuthFlow() {
   async function submitManualCode(code: string): Promise<void> {
     if (!credsRef.current) return;
     if (cancelRef.current.cancelled) return;
+    if (exchangingRef.current) return;
     const trimmed = code.trim();
     if (!trimmed) return;
+    exchangingRef.current = true;
     setPhase({ kind: "exchanging" });
     try {
       await exchangeAndStore(
@@ -279,6 +320,8 @@ export function useOAuthFlow() {
         message: e instanceof Error ? e.message : String(e),
         tokenAlreadyStored: !!token,
       });
+    } finally {
+      exchangingRef.current = false;
     }
   }
 

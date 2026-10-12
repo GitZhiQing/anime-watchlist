@@ -1,5 +1,9 @@
 // Store 插件封装：本地 KV 配置文件 config.json。
 // 存放 OAuth 凭据、token、用户资料缓存、代理与界面偏好等。
+//
+// 安全说明：client_secret / refresh_token / access_token 以明文存于本文件
+// （应用数据目录下，用户级权限）。桌面单用户场景下的常见妥协；如需更强隔离
+// 可评估迁移 OS 凭据库（Windows Credential Manager），当前不做。
 import { LazyStore } from "@tauri-apps/plugin-store";
 
 const store = new LazyStore("config.json");
@@ -49,16 +53,36 @@ export async function setStore(key: string, value: unknown): Promise<void> {
   await store.save();
 }
 
+/**
+ * 批量写入多个键后单次落盘（save 前全部 set 生效于内存，一次写盘）。
+ * 多键强关联的数据（token 三键等）必须用本函数：分次 setStore 会在中途
+ * 落盘留下「半新半旧」状态，进程若在间隙退出将无法恢复。
+ */
+export async function setStores(
+  entries: readonly (readonly [key: string, value: unknown])[],
+): Promise<void> {
+  for (const [key, value] of entries) {
+    if (value === undefined) {
+      await store.delete(key);
+    } else {
+      await store.set(key, value);
+    }
+  }
+  await store.save();
+}
+
 export async function deleteStore(key: string): Promise<void> {
   await store.delete(key);
   await store.save();
 }
 
-/** 清除所有认证相关数据（注销） */
+/** 清除所有认证相关数据（注销）；批量删除单次落盘 */
 export async function clearAuth(): Promise<void> {
-  await deleteStore(StoreKeys.accessToken);
-  await deleteStore(StoreKeys.refreshToken);
-  await deleteStore(StoreKeys.expiresAt);
-  await deleteStore(StoreKeys.user);
-  await deleteStore(StoreKeys.redirectUri);
+  await setStores([
+    [StoreKeys.accessToken, undefined],
+    [StoreKeys.refreshToken, undefined],
+    [StoreKeys.expiresAt, undefined],
+    [StoreKeys.user, undefined],
+    [StoreKeys.redirectUri, undefined],
+  ]);
 }

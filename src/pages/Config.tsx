@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SegmentedControl } from "@/components/SegmentedControl";
 import { Separator } from "@/components/ui/separator";
 import {
   Tooltip,
@@ -48,7 +49,7 @@ import {
   type RestoreMode,
   type RestorePlan,
 } from "@/lib/backup";
-import { cn } from "@/lib/utils";
+import { cn, fmtDateTime } from "@/lib/utils";
 
 function errText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -114,28 +115,34 @@ export function Config() {
 
   async function refreshState() {
     setLoading(true);
-    const [id, secret, proxy, fixed, bDir, bLast] = await Promise.all([
-      getStore<string>(StoreKeys.clientId),
-      getStore<string>(StoreKeys.clientSecret),
-      getStore<ProxyConfig>(StoreKeys.proxy),
-      getStore<boolean>(StoreKeys.oauthFixedPort),
-      getStore<string>(StoreKeys.backupDir),
-      getStore<number>(StoreKeys.backupLastTime),
-    ]);
-    setClientId(id ?? "");
-    setClientSecret(secret ?? "");
-    setProxyUrl(proxy?.url ?? "");
-    setProxyUser(proxy?.username ?? "");
-    setProxyPass(proxy?.password ?? "");
-    setSavedProxy(
-      proxy
-        ? { url: proxy.url, username: proxy.username, password: proxy.password }
-        : null,
-    );
-    setFixedPort(fixed === true);
-    setBackupDir(bDir ?? "");
-    setLastBackupAt(typeof bLast === "number" ? bLast : null);
-    setLoading(false);
+    try {
+      const [id, secret, proxy, fixed, bDir, bLast] = await Promise.all([
+        getStore<string>(StoreKeys.clientId),
+        getStore<string>(StoreKeys.clientSecret),
+        getStore<ProxyConfig>(StoreKeys.proxy),
+        getStore<boolean>(StoreKeys.oauthFixedPort),
+        getStore<string>(StoreKeys.backupDir),
+        getStore<number>(StoreKeys.backupLastTime),
+      ]);
+      setClientId(id ?? "");
+      setClientSecret(secret ?? "");
+      setProxyUrl(proxy?.url ?? "");
+      setProxyUser(proxy?.username ?? "");
+      setProxyPass(proxy?.password ?? "");
+      setSavedProxy(
+        proxy
+          ? { url: proxy.url, username: proxy.username, password: proxy.password }
+          : null,
+      );
+      setFixedPort(fixed === true);
+      setBackupDir(bDir ?? "");
+      setLastBackupAt(typeof bLast === "number" ? bLast : null);
+    } catch (err) {
+      // store 读取失败也要解除加载态，否则页面永久卡在骨架
+      toast.error("读取配置失败", { description: errText(err) });
+    } finally {
+      setLoading(false);
+    }
   }
 
   /** 表单当前值是否与已保存配置不同（用户存在未保存的改动）。 */
@@ -188,14 +195,30 @@ export function Config() {
   }
 
   async function handleAuth() {
-    await saveCredentials();
+    try {
+      await saveCredentials();
+    } catch (err) {
+      toast.error("保存凭据失败", { description: errText(err) });
+      return;
+    }
     setManualCode("");
-    await start(mode, fixedPort);
+    try {
+      await start(mode, fixedPort);
+    } catch (err) {
+      // start 内部各分支已 setPhase，这里只兜「读取凭据 store 失败」等意外抛出
+      toast.error("启动认证失败", { description: errText(err) });
+    }
   }
 
   async function handleToggleFixedPort(checked: boolean) {
+    const prev = fixedPort;
     setFixedPort(checked);
-    await setStore(StoreKeys.oauthFixedPort, checked);
+    try {
+      await setStore(StoreKeys.oauthFixedPort, checked);
+    } catch (err) {
+      setFixedPort(prev); // 落库失败回滚，避免 UI 与持久化值漂移
+      toast.error("保存开关失败", { description: errText(err) });
+    }
   }
 
   async function copyRedirectUri() {
@@ -229,6 +252,8 @@ export function Config() {
           ? { type: "ok", text: "代理可用，已成功连接 Bangumi" }
           : { type: "err", text: result.message },
       );
+    } catch (err) {
+      setProxyMsg({ type: "err", text: `测试请求异常：${errText(err)}` });
     } finally {
       setTesting(false);
     }
@@ -244,24 +269,28 @@ export function Config() {
   /** 保存代理配置；地址为空则视为关闭代理。 */
   async function handleSaveProxy() {
     setProxyMsg(null);
-    if (!proxyUrl.trim()) {
-      await deleteStore(StoreKeys.proxy);
+    try {
+      if (!proxyUrl.trim()) {
+        await deleteStore(StoreKeys.proxy);
+        invalidateProxyCache();
+        setSavedProxy(null);
+        setProxyMsg({ type: "ok", text: "已清除代理，请求将直连" });
+        flashSaved();
+        return;
+      }
+      const cfg: ProxyConfig = {
+        url: proxyUrl.trim(),
+        username: proxyUser.trim(),
+        password: proxyPass,
+      };
+      await setStore(StoreKeys.proxy, cfg);
       invalidateProxyCache();
-      setSavedProxy(null);
-      setProxyMsg({ type: "ok", text: "已清除代理，请求将直连" });
+      setSavedProxy(cfg);
+      setProxyMsg({ type: "ok", text: "代理已保存，对所有请求立即生效" });
       flashSaved();
-      return;
+    } catch (err) {
+      setProxyMsg({ type: "err", text: `保存失败：${errText(err)}` });
     }
-    const cfg: ProxyConfig = {
-      url: proxyUrl.trim(),
-      username: proxyUser.trim(),
-      password: proxyPass,
-    };
-    await setStore(StoreKeys.proxy, cfg);
-    invalidateProxyCache();
-    setSavedProxy(cfg);
-    setProxyMsg({ type: "ok", text: "代理已保存，对所有请求立即生效" });
-    flashSaved();
   }
 
   /** 选择/更换备份目录并记住，之后备份直接使用，无需再选。 */
@@ -343,11 +372,11 @@ export function Config() {
         restoreMode,
         (done, total) => setRestoreProgress({ done, total }),
       );
-      await queryClient.invalidateQueries({ queryKey: ["collections"] });
-      await queryClient.invalidateQueries({ queryKey: ["collection"] });
       setRestorePreview(null);
       const notes = [
-        result.failed.length > 0 ? `${result.failed.length} 条失败` : null,
+        result.failed.length > 0
+          ? `${result.failed.length} 条失败（可稍后用「用备份覆盖」模式重跑补齐）`
+          : null,
         result.tagsDropped > 0 ? `${result.tagsDropped} 条的个人标签未恢复` : null,
       ].filter(Boolean);
       toast.success(
@@ -359,6 +388,9 @@ export function Config() {
     } catch (err) {
       toast.error("恢复失败", { description: errText(err) });
     } finally {
+      // 放 finally：中途失败（如认证失效短路）时已恢复的部分也要刷新缓存
+      await queryClient.invalidateQueries({ queryKey: ["collections"] });
+      await queryClient.invalidateQueries({ queryKey: ["collection"] });
       setRestoring(false);
       setRestoreProgress(null);
     }
@@ -375,9 +407,12 @@ export function Config() {
   return (
     <PageLayout title="配置">
       {loading ? (
-        <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
-          <Loader2 className="mr-2 size-5 animate-spin" />
-          加载数据中...
+        <div
+          role="status"
+          className="flex items-center justify-center py-16 text-sm text-muted-foreground"
+        >
+          <Loader2 className="mr-2 size-5 animate-spin" aria-hidden="true" />
+          加载数据中…
         </div>
       ) : (
         <div className="mx-auto max-w-xl space-y-6">
@@ -485,6 +520,8 @@ export function Config() {
               onChange={(e) => setClientId(e.target.value)}
               placeholder="应用的 App ID"
               disabled={inFlow}
+              autoComplete="off"
+              spellCheck={false}
             />
           </div>
           <div className="space-y-2">
@@ -496,39 +533,23 @@ export function Config() {
               onChange={(e) => setClientSecret(e.target.value)}
               placeholder="应用的 App Secret"
               disabled={inFlow}
+              autoComplete="off"
+              spellCheck={false}
             />
           </div>
 
           {/* 模式切换 + 固定端口开关 */}
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="inline-flex rounded-md border border-border p-0.5">
-              <button
-                type="button"
-                disabled={inFlow}
-                onClick={() => setMode("auto")}
-                className={cn(
-                  "rounded px-3 py-1 text-sm",
-                  mode === "auto"
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground",
-                )}
-              >
-                自动
-              </button>
-              <button
-                type="button"
-                disabled={inFlow}
-                onClick={() => setMode("manual")}
-                className={cn(
-                  "rounded px-3 py-1 text-sm",
-                  mode === "manual"
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground",
-                )}
-              >
-                手动
-              </button>
-            </div>
+            <SegmentedControl
+              ariaLabel="授权模式"
+              options={[
+                { value: "auto", label: "自动" },
+                { value: "manual", label: "手动" },
+              ]}
+              value={mode}
+              onChange={setMode}
+              disabled={inFlow}
+            />
             <label className="flex items-center gap-2 text-sm text-muted-foreground">
               <Checkbox
                 checked={fixedPort}
@@ -546,12 +567,18 @@ export function Config() {
                 固定端口模式需在开发者后台登记以下回调地址：
               </p>
               <div className="flex items-center gap-2">
-                <Input value={REDIRECT_URI} readOnly className="font-mono text-xs" />
+                <Input
+                  value={REDIRECT_URI}
+                  readOnly
+                  aria-label="回调地址"
+                  className="font-mono text-xs"
+                />
                 <Button
                   variant="outline"
                   size="icon"
                   onClick={copyRedirectUri}
                   title="复制回调地址"
+                  aria-label="复制回调地址"
                 >
                   {copied ? (
                     <Check className="size-4 text-emerald-500" />
@@ -631,7 +658,10 @@ export function Config() {
                   value={manualCode}
                   onChange={(e) => setManualCode(e.target.value)}
                   placeholder="粘贴授权码 code"
+                  aria-label="授权码"
                   className="font-mono text-xs"
+                  autoComplete="off"
+                  spellCheck={false}
                 />
                 <Button
                   variant="outline"
@@ -695,6 +725,8 @@ export function Config() {
                 onProxyEdit();
               }}
               placeholder="需要 Basic 认证时填写"
+              autoComplete="off"
+              spellCheck={false}
             />
           </div>
           <div className="space-y-2">
@@ -807,9 +839,7 @@ export function Config() {
             </div>
             <p className="text-xs text-muted-foreground">
               上次备份：
-              {lastBackupAt
-                ? new Date(lastBackupAt).toLocaleString()
-                : "从未备份"}
+              {lastBackupAt ? fmtDateTime(lastBackupAt) : "从未备份"}
             </p>
             <div className="grid grid-cols-2 gap-2">
               <Button onClick={handleBackup} disabled={backingUp || restoring}>
@@ -863,7 +893,7 @@ export function Config() {
               </p>
               <div className="h-2 overflow-hidden rounded-full bg-muted">
                 <div
-                  className="h-full bg-primary transition-all"
+                  className="h-full bg-primary transition-[width]"
                   style={{
                     width: `${
                       restoreProgress && restoreProgress.total > 0
@@ -888,8 +918,8 @@ export function Config() {
                 </p>
                 <p className="text-muted-foreground">
                   导出自 {restorePreview.payload.username} ·{" "}
-                  {new Date(restorePreview.payload.exportedAt).toLocaleString()}{" "}
-                  · 共 {restorePreview.plan.total} 条
+                  {fmtDateTime(restorePreview.payload.exportedAt)} · 共{" "}
+                  {restorePreview.plan.total} 条
                 </p>
               </div>
               <div className="space-y-1 text-sm">
@@ -909,32 +939,15 @@ export function Config() {
               </div>
               <div className="space-y-1.5">
                 <p className="text-sm">已收藏条目的处理方式：</p>
-                <div className="inline-flex rounded-md border border-border p-0.5">
-                  <button
-                    type="button"
-                    onClick={() => setRestoreMode("skip")}
-                    className={cn(
-                      "rounded px-3 py-1 text-sm",
-                      restoreMode === "skip"
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground",
-                    )}
-                  >
-                    跳过（推荐）
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRestoreMode("overwrite")}
-                    className={cn(
-                      "rounded px-3 py-1 text-sm",
-                      restoreMode === "overwrite"
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground",
-                    )}
-                  >
-                    用备份覆盖
-                  </button>
-                </div>
+                <SegmentedControl
+                  ariaLabel="已收藏条目的处理方式"
+                  options={[
+                    { value: "skip", label: "跳过（推荐）" },
+                    { value: "overwrite", label: "用备份覆盖" },
+                  ]}
+                  value={restoreMode}
+                  onChange={setRestoreMode}
+                />
                 {restoreMode === "overwrite" && (
                   <p className="text-xs text-destructive">
                     覆盖将改写这些条目当前的收藏夹、评分、进度与备注，请确认备份较新。

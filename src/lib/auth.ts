@@ -19,7 +19,7 @@ import {
   isTokenExpired,
   refreshAccessToken,
 } from "@/lib/bgm";
-import { StoreKeys, clearAuth, getStore, setStore } from "@/lib/store";
+import { StoreKeys, clearAuth, getStore, setStore, setStores } from "@/lib/store";
 import type { BgmUser, CallbackResult, OAuthTokenResponse } from "@/types/bgm";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import type { Proxy } from "@tauri-apps/plugin-http";
@@ -121,10 +121,20 @@ async function exchangeCodeForToken(
         },
         body,
         connectTimeout: 10_000, // tauri-plugin-http 选项（ms）
+        signal: AbortSignal.timeout(20_000),
         ...(proxy ? { proxy } : {}),
       });
       if (res.ok) {
-        return (await res.json()) as OAuthTokenResponse;
+        // 2xx 但非 JSON（代理注入页面等）：确定性异常，重试无意义——
+        // 落入外层 catch 会被误归类为「可重试网络错误」误导报错
+        const text = await res.text();
+        try {
+          return JSON.parse(text) as OAuthTokenResponse;
+        } catch {
+          throw new DefinitiveTokenError(
+            `令牌响应不是有效 JSON（前 80 字符：${text.slice(0, 80)}）`,
+          );
+        }
       }
       if (res.status >= 400 && res.status < 500) {
         // 4xx：确定性失败，不重试。透传 Bangumi 的 error_description。
@@ -158,15 +168,18 @@ async function exchangeCodeForToken(
 /**
  * 落库 token 三键 + 持久化本次 redirect_uri。
  * redirect_uri 供后续 doRefresh 读取——刷新时传的 redirect_uri 必须与换 token 时一致。
+ * token 三键批量单次落盘（Bangumi 刷新轮换 refresh_token，分次写盘中断会半新半旧）。
  */
 async function storeTokens(
   token: OAuthTokenResponse,
   redirectUri: string,
 ): Promise<void> {
-  await setStore(StoreKeys.accessToken, token.access_token);
-  await setStore(StoreKeys.refreshToken, token.refresh_token);
-  await setStore(StoreKeys.expiresAt, Date.now() + token.expires_in * 1000);
-  await setStore(StoreKeys.redirectUri, redirectUri);
+  await setStores([
+    [StoreKeys.accessToken, token.access_token],
+    [StoreKeys.refreshToken, token.refresh_token],
+    [StoreKeys.expiresAt, Date.now() + token.expires_in * 1000],
+    [StoreKeys.redirectUri, redirectUri],
+  ]);
 }
 
 /** 拉取用户资料并落库，广播 auth-login 让 useAuthUser 同步。 */
