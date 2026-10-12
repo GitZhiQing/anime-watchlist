@@ -26,10 +26,12 @@ interface RateStarsProps {
   subjectId: number;
   /** 当前评分（0 = 未评） */
   rate: number;
+  /** 当前私密态：PATCH 评分时须带 private（服务端要求），透传保持原状 */
+  currentPrivate?: boolean;
 }
 
 /** 我的评分：1~10 星。点击已评分值可清除；乐观更新缓存，失败回滚。 */
-export function RateStars({ subjectId, rate }: RateStarsProps) {
+export function RateStars({ subjectId, rate, currentPrivate }: RateStarsProps) {
   const { user } = useAuthUser();
   const username = user?.username;
   const mut = usePatchCollection();
@@ -45,7 +47,7 @@ export function RateStars({ subjectId, rate }: RateStarsProps) {
     const next = shownRate === value ? 0 : value; // 再点同一颗星清除评分
     setOptRate(next); // 先改 UI，结果以 toast 通知
     mut.mutate(
-      { subjectId, username, rate: next },
+      { subjectId, username, rate: next, currentPrivate },
       {
         onSuccess: () =>
           next > 0
@@ -255,6 +257,8 @@ interface ProgressRowsProps {
   volStatus?: number;
   /** 总卷数（书籍类，为 0 时不显示卷） */
   volumes?: number;
+  /** 当前私密态：书籍话数/卷数走 PATCH 时须带 private，透传保持原状 */
+  currentPrivate?: boolean;
 }
 
 /** 我的进度：话数（逐集标记/步进）+ 书籍卷数。乐观更新缓存，失败回滚。 */
@@ -265,6 +269,7 @@ export function ProgressRows({
   totalEps,
   volStatus = 0,
   volumes = 0,
+  currentPrivate,
 }: ProgressRowsProps) {
   const qc = useQueryClient();
   const { user } = useAuthUser();
@@ -316,7 +321,7 @@ export function ProgressRows({
   /** 书籍：PATCH ep_status 一步到位（mutation 内已乐观直写缓存） */
   function commitEpBook(target: number) {
     mut.mutate(
-      { subjectId, username, ep_status: target },
+      { subjectId, username, ep_status: target, currentPrivate },
       {
         onSuccess: () => toast.success(`进度已更新：看到第 ${target} 话`),
         onError: (e) => {
@@ -382,7 +387,7 @@ export function ProgressRows({
     if (target === shownVol || isNaN(target)) return;
     setOptVol(target);
     mut.mutate(
-      { subjectId, username, vol_status: target },
+      { subjectId, username, vol_status: target, currentPrivate },
       {
         onSuccess: () => toast.success(`卷进度已更新：${target} 卷`),
         onError: (e) => {

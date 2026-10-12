@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { ChevronRight, Lock, RotateCw, X } from "lucide-react";
+import { ChevronRight, Globe, Loader2, Lock, RotateCw, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -122,13 +122,13 @@ function ZoomableCover({
 }
 
 /** 备注保存（inline 面板与 dialog 只读行共用）：保存成功后回调 done 关闭编辑态 */
-function useCommentSave(subjectId: number) {
+function useCommentSave(subjectId: number, currentPrivate?: boolean) {
   const { user } = useAuthUser();
   const patchMut = usePatchCollection();
   const save = useCallback(
     (value: string, done: () => void) => {
       patchMut.mutate(
-        { subjectId, username: user?.username, comment: value },
+        { subjectId, username: user?.username, comment: value, currentPrivate },
         {
           onSuccess: () => {
             done();
@@ -141,7 +141,7 @@ function useCommentSave(subjectId: number) {
         },
       );
     },
-    [patchMut, subjectId, user?.username],
+    [patchMut, subjectId, currentPrivate, user?.username],
   );
   return { save, pending: patchMut.isPending };
 }
@@ -166,9 +166,37 @@ function MySection({
   const [open, setOpen] = useState(false);
   const [editingComment, setEditingComment] = useState(false);
   const [commentText, setCommentText] = useState("");
-  const { save, pending: commentPending } = useCommentSave(subjectId);
+  const { save, pending: commentPending } = useCommentSave(
+    subjectId,
+    col?.private,
+  );
+  const privateMut = usePatchCollection();
+  const privatePending =
+    privateMut.isPending &&
+    privateMut.variables?.subjectId === subjectId &&
+    privateMut.variables?.private !== undefined;
 
   if (!col) return null;
+
+  /** 私密/公开切换：显式传 private，乐观直写缓存后徽标即时翻转 */
+  const togglePrivate = () => {
+    privateMut.mutate(
+      {
+        subjectId,
+        username: user?.username,
+        private: !col.private,
+        currentPrivate: col.private,
+      },
+      {
+        onSuccess: () =>
+          toast.success(col.private ? "已设为公开" : "已设为私密"),
+        onError: (e) =>
+          toast.error("切换失败", {
+            description: e instanceof Error ? e.message : String(e),
+          }),
+      },
+    );
+  };
 
   // 评分与进度仅对「在看、看过」有意义
   const progressEligible =
@@ -200,15 +228,27 @@ function MySection({
             我的
           </button>
         </CollapsibleTrigger>
-        {col.private && (
-          <span
-            className="inline-flex items-center gap-0.5 text-muted-foreground"
-            title="仅自己可见"
-          >
+        {/* 私密开关：点击切换公开/私密（乐观更新）；公开态也显示，便于确认当前可见性 */}
+        <button
+          type="button"
+          onClick={togglePrivate}
+          disabled={privatePending}
+          title={
+            col.private
+              ? "仅自己可见，点击设为公开"
+              : "公开可见，点击设为私密"
+          }
+          className="inline-flex cursor-pointer items-center gap-0.5 text-muted-foreground transition-colors hover:text-foreground disabled:cursor-default"
+        >
+          {privatePending ? (
+            <Loader2 className="size-3 animate-spin" />
+          ) : col.private ? (
             <Lock className="size-3" />
-            私密
-          </span>
-        )}
+          ) : (
+            <Globe className="size-3" />
+          )}
+          {col.private ? "私密" : "公开"}
+        </button>
         {updated && (
           <span className="text-[10px] text-muted-foreground">
             {updated} 更新
@@ -222,7 +262,11 @@ function MySection({
               <span className="w-16 shrink-0 leading-6 text-muted-foreground">
                 我的评分
               </span>
-              <RateStars subjectId={subjectId} rate={col.rate} />
+              <RateStars
+                subjectId={subjectId}
+                rate={col.rate}
+                currentPrivate={col.private}
+              />
             </div>
           )}
           {progressEligible && (
@@ -239,6 +283,7 @@ function MySection({
                   totalEps={detail.total_episodes || detail.eps || 0}
                   volStatus={col.vol_status}
                   volumes={detail.volumes ?? 0}
+                  currentPrivate={col.private}
                 />
               </div>
             </div>

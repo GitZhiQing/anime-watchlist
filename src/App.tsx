@@ -13,6 +13,7 @@ import { Calendar } from "@/pages/Calendar";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { usePersistentState } from "@/hooks/usePersistentState";
 import { collectionsQueryOptions } from "@/lib/queries";
+import { useTodayAiringIds } from "@/lib/today";
 import {
   COLLECTION_ORDER,
   SUBJECT_TYPES,
@@ -128,6 +129,9 @@ export default function App() {
       enabled: !!username && watchlistVisited,
     })),
   });
+
+  /** 今日放送条目 id：复用 ["calendar"] 缓存（先进新番页则零请求），追番页「今天更新」标识 */
+  const todayIds = useTodayAiringIds(!!username && watchlistVisited);
 
   const loading = queries.some((q) => q.isFetching);
   const error = queries.find((q) => q.error)?.error;
@@ -326,6 +330,7 @@ export default function App() {
                       onSortChange={setSortKey}
                       sortDir={sortDir}
                       onToggleSortDir={toggleSortReversed}
+                      todayIds={todayIds}
                       onNavigate={navigate}
                     />
                   )

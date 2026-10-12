@@ -27,6 +27,8 @@ interface SubjectRowProps {
   extraInfo?: React.ReactNode;
   /** 本地搜索关键词：在标题/短简介中高亮命中片段 */
   highlight?: string;
+  /** 今日放送（追番页在看条目）：标题行显示「今天更新」徽标 */
+  todayAiring?: boolean;
   className?: string;
 }
 
@@ -111,6 +113,7 @@ export function SubjectRow({
   subject,
   extraInfo,
   highlight,
+  todayAiring,
   className,
 }: SubjectRowProps) {
   const [open, setOpen] = useState(false);
@@ -201,6 +204,11 @@ export function SubjectRow({
             )}
             {subject.nsfw && <NSFWBadge />}
             <AirBadge date={subject.date} />
+            {todayAiring && (
+              <span className="shrink-0 rounded bg-primary/15 px-1 py-0.5 text-[10px] leading-none font-medium text-primary">
+                今天更新
+              </span>
+            )}
             <ChevronRight
               className={cn(
                 "ml-auto size-4 shrink-0 text-muted-foreground transition-transform",

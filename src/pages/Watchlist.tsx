@@ -39,6 +39,8 @@ interface WatchlistProps {
   highlight?: string;
   /** 视图模式：列表 / 网格 */
   viewMode: ViewMode;
+  /** 今日放送条目 id（每日放送日历缓存派生）：在看组行/卡「今天更新」标识与组头计数 */
+  todayIds?: Set<number>;
   /** 跨页导航（空组引导「去找番搜索」用） */
   onNavigate: (page: PageKey) => void;
 }
@@ -49,6 +51,7 @@ function Watchlist({
   setOpenMap,
   highlight,
   viewMode,
+  todayIds,
   onNavigate,
 }: WatchlistProps) {
   /** 列表态行内进度（与评分/话数等元信息同一行）：看到第 N 话 + 我的评分 */
@@ -94,11 +97,28 @@ function Watchlist({
       {COLLECTION_ORDER.map((type) => {
         const items = groups[type] ?? [];
         const open = openMap[type];
+        // 今日更新仅对在看组有意义（其余组不放送）
+        const doing = type === CollectionType.Doing;
+        const todayCount =
+          doing && todayIds
+            ? items.filter((c) => todayIds.has(c.subject_id)).length
+            : 0;
         return (
           <SubjectGroup
             key={type}
             id={`collection-${type}`}
-            title={COLLECTION_LABELS[type as CollectionType]}
+            title={
+              todayCount > 0 ? (
+                <>
+                  {COLLECTION_LABELS[type as CollectionType]}
+                  <span className="ml-1.5 text-xs font-normal text-primary/80">
+                    今日更新 {todayCount} 部
+                  </span>
+                </>
+              ) : (
+                COLLECTION_LABELS[type as CollectionType]
+              )
+            }
             count={items.length}
             open={open}
             onOpenChange={(o) => setOpenMap((m) => ({ ...m, [type]: o }))}
@@ -119,6 +139,7 @@ function Watchlist({
                             }`
                           : undefined
                       }
+                      todayAiring={doing && todayIds?.has(c.subject_id)}
                     />
                   ))}
                 </div>
@@ -131,6 +152,7 @@ function Watchlist({
                     subject={c.subject}
                     extraInfo={<ProgressInfo item={c} />}
                     highlight={highlight}
+                    todayAiring={doing && todayIds?.has(c.subject_id)}
                   />
                 ))}
               </div>
@@ -162,6 +184,8 @@ interface WatchlistPageProps {
   /** 当前排序方向（升/降序） */
   sortDir: WatchSortDir;
   onToggleSortDir: () => void;
+  /** 今日放送条目 id 集合（App 由日历缓存派生） */
+  todayIds?: Set<number>;
   /** 跨页导航（空组引导用） */
   onNavigate: (page: PageKey) => void;
 }
@@ -182,6 +206,7 @@ export function WatchlistPage({
   onSortChange,
   sortDir,
   onToggleSortDir,
+  todayIds,
   onNavigate,
 }: WatchlistPageProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -290,6 +315,7 @@ export function WatchlistPage({
               setOpenMap={setOpenMap}
               highlight={keyword}
               viewMode={viewMode}
+              todayIds={todayIds}
               onNavigate={onNavigate}
             />
           ) : (

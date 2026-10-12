@@ -1,10 +1,12 @@
-import { Check, ChevronDown, Loader2, Plus, RefreshCw } from "lucide-react";
+import { Check, ChevronDown, ExternalLink, Loader2, Plus, RefreshCw } from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuthUser } from "@/hooks/useAuthUser";
@@ -60,7 +62,7 @@ export function CollectAction({ subjectId, subject, size = "sm" }: CollectAction
       );
     } else {
       patchMut.mutate(
-        { subjectId, username, type },
+        { subjectId, username, type, currentPrivate: data?.private },
         {
           onSuccess: () =>
             toast.success(`已移入「${COLLECTION_LABELS[type]}」`),
@@ -126,6 +128,21 @@ export function CollectAction({ subjectId, subject, size = "sm" }: CollectAction
             {COLLECTION_LABELS[t]}
           </DropdownMenuItem>
         ))}
+        {/* 上游无取消收藏端点：去网页管理（条目页右侧收藏面板）删除收藏 */}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={() =>
+            void openUrl(`https://bangumi.tv/subject/${subjectId}`).catch(
+              (e) =>
+                toast.error("打开网页失败", {
+                  description: e instanceof Error ? e.message : String(e),
+                }),
+            )
+          }
+        >
+          <ExternalLink className="size-3.5 opacity-0" />
+          到网页管理收藏
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

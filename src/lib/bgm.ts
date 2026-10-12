@@ -427,14 +427,16 @@ export interface CollectionPatch {
   private?: boolean;
 }
 
-/** 修改收藏（改收藏夹/进度/评分等）。默认私密。 */
+/** 修改收藏（改收藏夹/进度/评分/私密等）。
+ *  服务端要求改非 type 字段时必须带 private——是否私密由调用方显式传入
+ *  （queries 层 usePatchCollection 以 currentPrivate 兜底），本层不再强制。 */
 export function patchCollection(
   subjectId: number,
   patch: CollectionPatch,
 ): Promise<void> {
   return bgmRequest<void>(`/v0/users/-/collections/${subjectId}`, {
     method: "PATCH",
-    body: { ...patch, private: true },
+    body: patch,
   });
 }
 

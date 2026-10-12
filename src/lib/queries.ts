@@ -242,6 +242,9 @@ function rollbackCollections(
 interface CollectionMutateVars {
   subjectId: number;
   username: string | undefined;
+  /** 当前私密态。PATCH 非 private 字段时服务端要求带 private，缺省回退 true
+   *  （历史行为）；调用方应传 col.private，避免把网页端设为公开的收藏重置回私密 */
+  currentPrivate?: boolean;
 }
 
 /** mutation 成功后的统一收尾：失效单条（有观察者才后台重拉），列表只置 stale。 */
@@ -312,7 +315,9 @@ export function useSetCollection() {
   });
 }
 
-/** 修改收藏（收藏夹/进度/评分/备注）。乐观直写全部缓存，失败回滚。 */
+/** 修改收藏（收藏夹/进度/评分/备注/私密）。乐观直写全部缓存，失败回滚。
+ *  private 解析顺序：显式 patch.private > vars.currentPrivate > true——
+ *  非 private 字段的 PATCH 必须携带 private（服务端要求），透传当前值保持原状。 */
 export function usePatchCollection() {
   const qc = useQueryClient();
   const settle = useSettleCollections();
@@ -320,9 +325,15 @@ export function usePatchCollection() {
     mutationFn: ({
       subjectId,
       username,
+      currentPrivate,
       ...patch
-    }: CollectionMutateVars & CollectionPatch) => patchCollection(subjectId, patch),
-    onMutate: async ({ subjectId, username, ...patch }) => {
+    }: CollectionMutateVars & CollectionPatch) =>
+      patchCollection(subjectId, {
+        ...patch,
+        private: patch.private ?? (currentPrivate ?? true),
+      }),
+    onMutate: async ({ subjectId, username, currentPrivate, ...patch }) => {
+      void currentPrivate; // 仅参与请求体组装，不写入缓存
       await qc.cancelQueries({ queryKey: ["collection", username, subjectId] });
       const lists = qc.getQueriesData<UserCollection[]>({
         queryKey: ["collections", username],

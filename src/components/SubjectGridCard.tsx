@@ -13,6 +13,8 @@ interface SubjectGridCardProps {
   subject: SlimSubject;
   /** 卡片下方说明文字（追番：看到 N/M；新番：共 N 人在看），缺省时空占位保持对齐 */
   caption?: ReactNode;
+  /** 今日放送（追番页在看条目）：封面左上角「今日」角标 */
+  todayAiring?: boolean;
   className?: string;
 }
 
@@ -20,7 +22,7 @@ interface SubjectGridCardProps {
  * 网格视图的海报卡片（追番页/新番页共用）：
  * 封面（NSFW 模糊处理）+ 评分角标 + 底部标题浮层，点击打开统一详情弹窗。
  */
-export function SubjectGridCard({ subject, caption, className }: SubjectGridCardProps) {
+export function SubjectGridCard({ subject, caption, todayAiring, className }: SubjectGridCardProps) {
   const [open, setOpen] = useState(false);
   const s = subject;
   const title = s.name_cn || s.name || `#${s.id}`;
@@ -65,8 +67,17 @@ export function SubjectGridCard({ subject, caption, className }: SubjectGridCard
             </span>
           )}
 
-          {/* 顶部左：R18（封面已模糊）；顶部右：条目类型徽标 */}
-          {s.nsfw && <NSFWBadge className="absolute top-1 left-1" />}
+          {/* 顶部左：R18（封面已模糊）+ 今日放送角标；顶部右：条目类型徽标 */}
+          {(s.nsfw || todayAiring) && (
+            <div className="absolute top-1 left-1 flex items-center gap-1">
+              {s.nsfw && <NSFWBadge />}
+              {todayAiring && (
+                <span className="rounded bg-primary px-1 py-0.5 text-[10px] leading-none font-medium text-primary-foreground">
+                  今日
+                </span>
+              )}
+            </div>
+          )}
           {SUBJECT_LABELS[s.type as SubjectType] && (
             <span
               className={cn(

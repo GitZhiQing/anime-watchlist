@@ -31,7 +31,7 @@ src/
     SubjectGroup.tsx     # 折叠分组容器（追番收藏夹分组 / 新番星期分组共用；无边框，分组头为柔和底色圆角条 bg-muted/50）
     ViewTabs.tsx         # 列表/网格视图切换 Tabs（追番/新番共用）
     SubjectP1Sections.tsx # p1 扩展信息（角色 CV/关联条目/相关推荐，滚动可见才请求+骨架占位，失败静默隐藏；关联/推荐为海报卡片网格（视觉对齐 SubjectGridCard），点击卡片应用内打开详情弹窗，hover 预取）
-    CollectAction.tsx    # 收藏/移动收藏夹下拉（xs~sm，乐观更新；不提供取消收藏——上游无端点，见 docs/API.md；非 modal——嵌 modal 详情弹窗时避免连带关闭弹窗）
+    CollectAction.tsx    # 收藏/移动收藏夹下拉（xs~sm，乐观更新；不提供取消收藏——上游无端点，见 docs/API.md，菜单尾「到网页管理收藏」深链缓解；非 modal——嵌 modal 详情弹窗时避免连带关闭弹窗）
     ProgressEdit.tsx     # RateStars（我的评分）+ ProgressRows（我的进度：逐集/步进 + 书籍卷）
     BangumiLink.tsx      # Bangumi 外链（标题行内联图标模式）
     FadeImg.tsx / ErrorBoundary.tsx / SubjectSummary.tsx # 图片淡入 / 详情渲染兜底 / 简介排版
@@ -67,6 +67,7 @@ docs/                   # 文档（API.md 接口总文档 + dev/ 开发文档，
 - **凭据管理**：用户自填 client_id/secret，应用不内置凭据
 - **缓存与乐观更新**：TanStack Query（条目详情/剧集 30min，日历/热度 10min，收藏列表 1min，单条收藏 2min，搜索 5min，p1 扩展 1h）。全局 `gcTime` 30min（默认 5min 会在 staleTime 内就回收缓存导致重复请求）；`refetchOnWindowFocus`/`refetchOnReconnect` 均关闭，桌面端焦点切换/网络恢复不触发后台重拉。收藏 mutation **乐观直写全部缓存**（`patchCachedCollections`）+ 失败回滚，成功仅精准失效单条、列表只置 stale 不重拉——勿恢复对 `["collections"]` 的全量失效（会触发 5 类全量分页重拉）。**新增收藏仅乐观插入对应 subjectType 的列表缓存**（勿按 `["collections", username]` 前缀遍历插入全部 5 类——同一 stub 被多类缓存持有后，「全部」视图 flatMap 会渲染出重复卡片）；`getAllUserCollections` 分页拼接时按 `subject_id` 去重（并发翻页期间服务端列表变动平移 offset 可致跨页重复）。收藏状态读取一律走 `useUserCollectionSmart`（先查列表缓存，命中零请求；其返回的 `refetch` 供 CollectAction 失败态重试），勿直接单条 GET。三个 keep-alive 页面均由 App 内 `*Visited` 门控（`watchlistVisited`/`calendarVisited`/`collectionVisited`），首次进入对应页才拉取，冷启动停在其他页零请求
 - **未登录引导**：冷启动认证判定完成后仍无用户且用户从未手动切页（App 内 `userInteracted` ref，侧边栏导航经 `navigate()` 置位）→ 自动落地**新番页**（游客可浏览公开数据，空追番页对游客零价值）；注销/会话失效同样适用。追番页未登录空态提供「去认证 / 先逛逛新番」按钮、找番页未登录横幅提供「去认证」按钮（均经 `onNavigate` 回调由 App 注入）；配置页认证区内置可折叠三步凭据创建向导（动态端口模式无需登记回调）
+- **今日放送标识**：追番页在看条目经 `useTodayAiringIds`（`lib/today.ts`）匹配每日放送日历缓存（`["calendar"]` 与新番页/热度榜兜底共用，缓存命中零额外请求；60s 心跳跨 0 点自动迁移）——列表行标题行「今天更新」徽标（`SubjectRow todayAiring`）+ 网格卡封面左上「今日」角标（与 R18 同排）+ 在看组头「今日更新 N 部」计数；**仅在看组**（其余收藏组不放送）
 - **统一详情容器**：`SubjectDetailView` 是全应用唯一的详情渲染单元（inline=展开行 / dialog=弹窗），字段顺序、加载骨架、错误重试、p1 区块只写一份；收藏/外链操作位于标题行（列表行或弹窗头部），「我的」折叠栏承载评分/进度/备注
 - **追番/新番/找番视图统一**：三页共用 `ViewTabs`（列表/网格切换）与 `SubjectGroup`（折叠分组容器；追番/新番分组用，找番无分组）。追番/新番的 ViewTabs 位于搜索框右侧，找番页位于标题栏 toolbar 插槽（持久化 `prefs.collection.viewMode`）。新番页默认列表视图，两种视图都是周一→周日 7 个分组（旧存值 `prefs.calendar.viewMode="table"` 归一化为网格）；网格卡片共用 `SubjectGridCard`（`subject` + `caption` props，追番传进度、新番传关键指标人数——本季在看、季度随所选季为想看/在看/看过；找番搜索传评分、热度榜传热度值）
 - **折叠分组无边框样式**：`SubjectGroup` 统一为「柔和底色圆角条分组头 + 内容区无边框无分隔线」（`bg-muted/50` 头部、`hover:bg-muted/70`，组间距 `space-y-3`），新番「今天」分组头部改用 `bg-primary/15` 强调（`primary` 是中性色，/5 与普通头部几乎无差别）。`SubjectRow` 展开详情区同步去掉 `border-t` 分隔线（仅留 `px-4 pb-4 pt-3` 内距，靠行自身的 `data-[state=open]:bg-muted/30` 底色区分）。页面侧的内容包装不再加 `border-t`；追番页骨架屏（`WatchlistSkeleton`）样式与之对齐。**新增分组/折叠容器请沿用此无边框样式**，勿加 `border border-border`
@@ -120,6 +121,6 @@ CI 在 `windows-latest`：安装依赖 → `npm run tauri build` → 打包便�
 - **SlimSubject vs Subject**：列表接口返回 SlimSubject（`short_summary`/顶层 `score`），完整 Subject 仅 `GET /v0/subjects/{id}` 有 `summary`/`rating.score`/`total_episodes`
 - **infobox 形状多态**：Bangumi 部分条目 infobox 缺 `values` 或整体非数组，渲染前必须容错（`infoboxValue`）；详情树包 ErrorBoundary，数据异常只降级单区块不白屏
 - **p1 私有接口**（next.bgm.tv，无官方文档）：解析宽松、失败静默降级（区块直接隐藏），缓存 1h（`lib/p1.ts`）。**响应形状会漂移**：2026-09 实测 characters/relations/recs 由顶层数组变为 `{data:[...],total}` 包装、条目嵌套 `character`/`subject` 键、`relation` 变对象、CV 键 `cast`→`casts[].person`——`p1.ts` 统一解包归一化为扁平类型，渲染层与 `types/bgm.ts` 不感知，改形状时只动 p1.ts；部分条目数据本身为空（`{"data":[],"total":0}`），按空数据隐藏非异常（详见 `docs/API.md` p1 章节）
-- **收藏默认私密**：POST/PATCH collection 必带 `private:true`
+- **收藏默认私密**：POST collection 恒带 `private:true`（新增收藏默认私密）；PATCH 的 `private` 由 queries 层组装——`usePatchCollection` 以 vars `currentPrivate`（各调用点传 `col.private`）兜底、显式切换传 `private` 字段（「我的」头部私密开关），**勿在 bgm 层重新硬编码 private**（会把网页端设为公开的收藏重置回私密）；服务端要求改非 type 字段必带 private
 - **不提供「取消收藏」**：Bangumi v0 API 无取消收藏条目端点——官方 OpenAPI 对 `/v0/users/-/collections/{subject_id}` 只定义 post/patch，服务端 routes.go 相关 DELETE 注释为 `TODO: wait for soft delete`（人物/角色同理），实测 DELETE 返回框架默认 404。相关调用代码已移除，勿凭文档加回
 - **Bangumi API base**：`https://api.bgm.tv`（v0），OAuth 用 `https://bgm.tv`
