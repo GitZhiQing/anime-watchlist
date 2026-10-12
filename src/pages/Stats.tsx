@@ -172,12 +172,8 @@ export function StatsPage({ bySubjectType, onNavigate }: StatsPageProps) {
         </StatCard>
 
         <StatCard
-          title="年度加入趋势"
-          footer={
-            stats.hasCreatedAt
-              ? "按收藏创建时间统计"
-              : "当前缓存不含加入时间，到追番页刷新一次收藏即可统计"
-          }
+          title="开播年份分布"
+          footer="按条目开播日期统计（未定档条目不计）"
         >
           {stats.yearBars.length > 0 ? (
             <BarList data={stats.yearBars} />

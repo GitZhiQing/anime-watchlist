@@ -63,7 +63,8 @@ export function PersonDetailDialog({
         }
       }}
     >
-      <DialogContent className="max-w-lg">
+      {/* 限高 + 内滚动：简介/CV 列表过长时弹窗不超出视口 */}
+      <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto">
         <DialogTitle className="sr-only">{name || "详情"}</DialogTitle>
         {q.isPending ? (
           <div className="flex gap-3">

@@ -97,10 +97,11 @@ function Watchlist({
       {COLLECTION_ORDER.map((type) => {
         const items = groups[type] ?? [];
         const open = openMap[type];
-        // 今日更新仅对在看组有意义（其余组不放送）
-        const doing = type === CollectionType.Doing;
+        // 今日更新对在看/想看组有意义（在追/想追的当季番会放送；看过/搁置/抛弃不打扰）
+        const todayEligible =
+          type === CollectionType.Doing || type === CollectionType.Wish;
         const todayCount =
-          doing && todayIds
+          todayEligible && todayIds
             ? items.filter((c) => todayIds.has(c.subject_id)).length
             : 0;
         return (
@@ -139,7 +140,7 @@ function Watchlist({
                             }`
                           : undefined
                       }
-                      todayAiring={doing && todayIds?.has(c.subject_id)}
+                      todayAiring={todayEligible && todayIds?.has(c.subject_id)}
                     />
                   ))}
                 </div>
@@ -152,7 +153,7 @@ function Watchlist({
                     subject={c.subject}
                     extraInfo={<ProgressInfo item={c} />}
                     highlight={highlight}
-                    todayAiring={doing && todayIds?.has(c.subject_id)}
+                    todayAiring={todayEligible && todayIds?.has(c.subject_id)}
                   />
                 ))}
               </div>

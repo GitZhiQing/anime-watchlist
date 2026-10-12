@@ -28,10 +28,8 @@ export interface StatsResult {
   myAvg: number | null;
   /** 收藏条目的社区评分均分（评分缺失不计） */
   communityAvg: number | null;
-  /** 年度加入趋势（created_at 有值时；旧缓存缺失则空数组） */
+  /** 开播年份分布（按条目 date 统计——v0 收藏接口无 created_at，加入时间不可得；未定档不计） */
   yearBars: StatsBar[];
-  /** 是否有任何 created_at（false 时趋势卡降级提示） */
-  hasCreatedAt: boolean;
 }
 
 /** 收藏夹条形配色（软色系，与徽标风格协调） */
@@ -93,16 +91,24 @@ export function computeStats(
     ? scored.reduce((s, c) => s + (c.subject.score ?? 0), 0) / scored.length
     : null;
 
-  // 年度加入趋势（created_at 缺失的旧缓存降级）
-  const withCreated = all.filter((c) => c.created_at);
+  // 开播年份分布（条目 date 的年份；未定档不计）。超过 15 个年份时早年合并为「更早」
   const byYear = new Map<number, number>();
-  for (const c of withCreated) {
-    const y = new Date(c.created_at!).getFullYear();
-    if (!isNaN(y)) byYear.set(y, (byYear.get(y) ?? 0) + 1);
+  for (const c of all) {
+    const d = c.subject?.date;
+    if (!d) continue;
+    const y = parseInt(d.slice(0, 4), 10);
+    if (!isNaN(y) && y > 1900 && y < 2100) byYear.set(y, (byYear.get(y) ?? 0) + 1);
   }
-  const yearBars = [...byYear.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([y, n]) => ({ label: `${y}`, value: n }));
+  const years = [...byYear.entries()].sort((a, b) => a[0] - b[0]);
+  let yearBars: StatsBar[] = years.map(([y, n]) => ({ label: `${y}`, value: n }));
+  if (years.length > 15) {
+    const cut = years.length - 14; // 保留最近 14 个年份 + 「更早」
+    const earlier = years.slice(0, cut).reduce((s, [, n]) => s + n, 0);
+    yearBars = [
+      { label: "更早", value: earlier },
+      ...years.slice(cut).map(([y, n]) => ({ label: `${y}`, value: n })),
+    ];
+  }
 
   return {
     total: all.length,
@@ -113,6 +119,5 @@ export function computeStats(
     myAvg,
     communityAvg,
     yearBars,
-    hasCreatedAt: withCreated.length > 0,
   };
 }

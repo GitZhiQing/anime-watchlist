@@ -197,6 +197,8 @@ token 响应：
 
 query：`subject_type`、`limit`（本应用 50）、`offset`。返回 `PagedUserCollections`（`data` / `total` / `limit` / `offset`）。
 
+> **响应条目无 `created_at`**（2026-10-12 公开用户实测，仅 `updated_at` 等）——收藏加入时间不可得，统计页年份维度只能用条目 `date` 开播年份。
+
 `getAllUserCollections` 抓全量策略：先取第 0 页探知 `total`（并信任服务端压低的 `limit`），剩余页**有界并发 2** 拉取（5 类型并行时峰值并发 ≈ 5 + 5×2，兼顾速度与限流），单类型上限 100 页（5000 条 / 类型），结果按 offset 升序拼接。
 
 #### GET /v0/users/{username}/collections/{subject_id} 单条收藏状态

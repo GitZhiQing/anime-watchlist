@@ -274,24 +274,6 @@ export function Collection({ visited = true, onNavigate }: CollectionProps) {
               </DropdownMenuContent>
             </DropdownMenu>
           )}
-          {/* 高级筛选（仅搜索态）：切换下方筛选行显隐，有生效筛选时带计数 */}
-          {submitted && (
-            <Button
-              variant="outline"
-              size="sm"
-              className={cn("gap-1", activeFilterCount > 0 && "border-primary/50 text-primary")}
-              title="高级筛选（年份 / 评分 / R18）"
-              onClick={() => setFilterOpen((o) => !o)}
-            >
-              <SlidersHorizontal className="size-3.5" />
-              筛选
-              {activeFilterCount > 0 && (
-                <Badge variant="secondary" className="h-4 min-w-4 px-1 text-[10px] leading-none">
-                  {activeFilterCount}
-                </Badge>
-              )}
-            </Button>
-          )}
           <ViewTabs value={view} onChange={setViewMode} />
         </>
       }
@@ -375,10 +357,33 @@ export function Collection({ visited = true, onNavigate }: CollectionProps) {
               "查找"
             )}
           </Button>
+          {/* 高级筛选开关：与查找按钮同排（类似网站的高级筛选入口），切换下方筛选行 */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={cn(
+              "gap-1",
+              activeFilterCount > 0 && "border-primary/50 text-primary",
+            )}
+            title="高级筛选（年份 / 评分 / R18）"
+            onClick={() => setFilterOpen((o) => !o)}
+          >
+            <SlidersHorizontal className="size-3.5" />
+            筛选
+            {activeFilterCount > 0 && (
+              <Badge
+                variant="secondary"
+                className="h-4 min-w-4 px-1 text-[10px] leading-none"
+              >
+                {activeFilterCount}
+              </Badge>
+            )}
+          </Button>
         </form>
 
-        {/* 高级筛选行（仅搜索态；工具栏「筛选」切换，有生效筛选时保持显示）。改动立即重搜 */}
-        {submitted && (filterOpen || activeFilterCount > 0) && (
+        {/* 高级筛选行（「筛选」按钮切换，有生效筛选时保持显示）。改动立即重搜 */}
+        {(filterOpen || activeFilterCount > 0) && (
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className="text-xs text-muted-foreground">年份</span>
             <Input

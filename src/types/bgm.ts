@@ -185,8 +185,6 @@ export interface UserCollection {
   comment: string | null;
   ep_status: number;
   vol_status: number;
-  /** 收藏创建时间（v0 返回该字段，统计页年度趋势用；旧缓存可能缺失） */
-  created_at?: string;
   updated_at: string;
   private: boolean;
   subject: SlimSubject;
