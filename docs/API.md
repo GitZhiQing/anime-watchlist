@@ -37,9 +37,9 @@ GitZhiQing/anime-watchlist/<version> (https://github.com/GitZhiQing/anime-watchl
 - `path` 不以 `http` 开头时自动拼 `API_BASE`；p1 等完整 URL 直接透传
 - query 参数自动过滤 `undefined` / `null`
 - 非 GET 且有 body → 自动加 `Content-Type: application/json`
-- 响应统一先 `res.text()` 再解析，**空 body（204）返回 `undefined`**，避免 JSON 解析报错
+- 响应统一先 `res.text()` 再解析，**空 body（204）返回 `undefined`**；**非空但非 JSON（如代理注入页面）抛 `BgmError`**——不能静默归为 undefined（会破坏「204 空」语义并让调用方拿到无上下文的解引用错误）
 - 失败抛 `BgmError`（携带 status，message 取服务端 `description`）；认证已失效抛 `AuthExpiredError`（其子类）
-- `connectTimeout`：API 15s / OAuth 换 token 10s / 代理测试 8s
+- 超时两层：`connectTimeout` 连接建立阶段（API 15s / OAuth 换 token 10s / 代理测试 8s）+ 整体超时 `AbortSignal.timeout`（API 30s / OAuth 20s / 代理测试 12s，经 plugin-http `fetch_cancel` 真取消 Rust 侧请求；超时为普通错误，不清登录态）
 - 缓存（TanStack Query，`src/lib/queries.ts`）：条目详情 `staleTime` 30min，收藏列表 1min，mutation 成功后失效
 
 ### 401 自动刷新与登录态

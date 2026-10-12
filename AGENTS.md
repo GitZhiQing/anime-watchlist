@@ -28,15 +28,17 @@ src/
     SubjectDetailView.tsx # 统一详情容器（inline=展开行 / dialog=卡片弹窗）：字段/标签/「我的」折叠/简介/p1
     SubjectDetailDialog.tsx # 应用内详情弹窗壳（Dialog + SubjectDetailView dialog，网格卡片/p1 关联·推荐卡片共用）
     SubjectEpisodesSection.tsx # 详情剧集列表区（简介与 p1 区块之间；与「我的进度」共享 ["episodes",id] 缓存、进入视口才请求；**区块整体可折叠且默认收起**（一行「剧集（N）」），展开后单列单话单行（序号|标题|首播日期），有简介的话点击行内展开（desc 实测 140~280+ 字多段，勿塞悬浮提示）；已看高亮/未播置灰；空/失败静默隐藏）
-    PersonDetailDialog.tsx # 角色/声优详情弹窗（**固定宽高** max-w-lg×70vh：头部固定 + 主体内部滚动，角色/声优弹窗等大；p1 人物端点宽松解析降级、career 英文映射中文；角色弹窗声优列表紧贴头部在简介前，点 CV 名可再开声优弹窗——递归复用）
+    PersonDetailDialog.tsx # 角色/声优详情弹窗（**固定宽高** max-w-lg×70vh：头部固定 + 主体内部滚动，角色/声优弹窗等大；p1 人物端点宽松解析降级、career 英文映射中文；头部头像点开大图（ZoomableImage）；角色弹窗声优列表紧贴头部在简介前，点 CV 名可再开声优弹窗——递归复用）
     SubjectGridCard.tsx  # 网格视图海报卡片（追番/新番共用，subject+caption props，标题前带条目类型徽标，点击开详情弹窗）
     SubjectGroup.tsx     # 折叠分组容器（追番收藏夹分组 / 新番星期分组共用；无边框，分组头为柔和底色圆角条 bg-muted/50）
     ViewTabs.tsx         # 列表/网格视图切换 Tabs（追番/新番共用）
-    SubjectP1Sections.tsx # p1 扩展信息（角色 CV/关联条目/相关推荐，滚动可见才请求+骨架占位，失败静默隐藏；关联/推荐为海报卡片网格（视觉对齐 SubjectGridCard），点击卡片应用内打开详情弹窗，hover 预取；角色卡：署名/身份徽标/全部 CV，点卡片开角色弹窗、点 CV 名开声优弹窗，默认 12 位 +「查看全部」客户端展开——p1 列表未传 limit 响应即全量）
+    SegmentedControl.tsx # 分段单选控件（radiogroup 语义 + roving tabindex + 方向键；配置页授权/恢复模式、新番季度选择共用；季度切 arrowSelects=false 仅移焦点）
+    SubjectP1Sections.tsx # p1 扩展信息（角色 CV/关联条目/相关推荐，滚动可见才请求+骨架占位，失败静默隐藏；关联/推荐为海报卡片网格（视觉对齐 SubjectGridCard，默认 12/8 条 +「查看全部」客户端展开），点击卡片应用内打开详情弹窗，hover 预取；角色区横向滚动**默认渲染全部、不做折叠**（横向滚动即承载任意数量，勿再加竖向折叠控件），角色卡：署名/身份徽标/全部 CV，点图片看大图（ZoomableImage）、点名字开角色弹窗、点 CV 名开声优弹窗——p1 列表未传 limit 响应即全量）
     CollectAction.tsx    # 收藏/移动收藏夹下拉（xs~sm，乐观更新；不提供取消收藏——上游无端点，见 docs/API.md，菜单尾「网页管理」外链深链缓解；非 modal——嵌 modal 详情弹窗时避免连带关闭弹窗）
     ProgressEdit.tsx     # RateStars（我的评分）+ ProgressRows（我的进度：逐集/步进 + 书籍卷）
     BangumiLink.tsx      # Bangumi 外链（标题行内联图标模式）
-    FadeImg.tsx / ErrorBoundary.tsx / SubjectSummary.tsx # 图片淡入 / 详情渲染兜底 / 简介排版
+    FadeImg.tsx / ErrorBoundary.tsx / SubjectSummary.tsx # 图片淡入（失败退出隐藏显示 alt）/ 详情渲染兜底 / 简介排版
+    ZoomableImage.tsx    # 点击放大查看的图片（小图 FadeImg + image Dialog 大图，角色卡/人物弹窗头像共用；条目封面沿用 SubjectRow/ZoomableCover 内联实现）
     SearchInput.tsx、WatchlistToolbar.tsx # 搜索框、追番工具栏（类型筛选/排序组合/跳转/刷新）
   lib/
     bgm.ts              # HTTP 客户端（@tauri-apps/plugin-http，UA+Bearer+401刷新）
@@ -50,8 +52,8 @@ src/
     today.ts            # 今日放送条目 id（复用 ["calendar"] 缓存派生，追番页「今天更新」标识用）
     stats.ts            # 统计聚合（纯函数：KPI 计数/收藏夹/类型/评分分布/开播年份，零请求）
     cover.ts            # 封面取图（lain /r/<宽>/ 官方缩放前缀改写，200/400/800 档）
-    utils.ts            # cn() 工具
-  hooks/               # useAuthUser / useOAuthFlow / usePersistentState / useInViewOnce
+    utils.ts            # cn() + 日期工具（fmtDate/fmtDateTime/isFutureDate，本地时区判定）+ prefersReducedMotion/smoothScrollTo
+  hooks/               # useAuthUser / useOAuthFlow / usePersistentState / useInViewOnce / usePrefetchOnHover（悬停 300ms 预取详情，列表行/网格卡/p1 卡共用）
   pages/               # Watchlist / Calendar / Collection / Stats / Config / About 六个页面
   types/bgm.ts          # Bangumi 数据类型（SlimSubject/Subject/UserCollection/枚举/p1）
 src-tauri/
@@ -67,9 +69,9 @@ docs/                   # 文档（API.md 接口总文档 + dev/ 开发文档，
 - **数据不落库**：收藏列表实时调 API，仅 token/凭据/偏好存本地（Store 插件）
 - **User-Agent**：必须走 `@tauri-apps/plugin-http`（Rust 侧 fetch）才能设 UA，webview fetch 不可
 - **HTTP 代理**：`@tauri-apps/plugin-http` 的 `fetch` 支持 `ClientOptions.proxy`，`proxy.ts` 把 store 里的配置转成 `{ all: { url, basicAuth? } }` 注入所有请求（bgm.ts/auth.ts 共用）；Rust 侧 cover:// 协议取图时自行解析 config.json 的 proxy 复用同一配置。配置页提供地址（必填）+ 可选 Basic 认证 + 测试连接
-- **OAuth 回调**：本地回环服务器动态选端口（7359–7369，每个端口先 IPv6 `::1` 后 IPv4 `127.0.0.1`），首个可用即用；全部被占才回退手动粘贴 code 模式。换 token 的 `redirect_uri` 等于授权时用的动态值（Bangumi 实测支持，符合 RFC 8252 loopback OAuth），故无需在开发者后台登记回调地址。配置页可勾选「固定端口 7359」回退固定模式（需后台登记）。授权交互由 `useOAuthFlow` 状态机驱动（显式阶段 + 120s 倒计时 + 可取消）；Rust 绑定端口后 emit `oauth-port` 事件，JS 据此构造动态 `redirect_uri` 再开授权页。`doRefresh` 读取 store 持久化的 `redirect_uri` 保证刷新时传值一致。CSRF `state` 参数自动模式校验。
+- **OAuth 回调**：本地回环服务器动态选端口（7359–7369，每个端口先 IPv6 `::1` 后 IPv4 `127.0.0.1`），首个可用即用；全部被占才回退手动粘贴 code 模式。换 token 的 `redirect_uri` 等于授权时用的动态值（Bangumi 实测支持，符合 RFC 8252 loopback OAuth），故无需在开发者后台登记回调地址。配置页可勾选「固定端口 7359」回退固定模式（需后台登记）。授权交互由 `useOAuthFlow` 状态机驱动（显式阶段 + 120s 倒计时 + 可取消）；Rust 绑定端口后 emit `oauth-port` 事件，JS 据此构造动态 `redirect_uri` 再开授权页。`doRefresh` 读取 store 持久化的 `redirect_uri` 保证刷新时传值一致。CSRF `state` 参数自动模式校验。token 三键（access/refresh/expiresAt）经 `setStores` 批量**单次落盘**（Bangumi 刷新轮换 refresh_token，分次写盘中断会留下「新 access + 已作废旧 refresh」无法恢复）；JS 侧先 `await listen("oauth-port")` 注册完成再 invoke 启动回调服务器（Rust 绑定端口后立即 emit，注册晚于 emit 会丢事件卡死 starting-server）。
 - **凭据管理**：用户自填 client_id/secret，应用不内置凭据
-- **缓存与乐观更新**：TanStack Query（条目详情/剧集 30min，日历/热度 10min，收藏列表 1min，单条收藏 2min，搜索 5min，p1 扩展 1h）。全局 `gcTime` 30min（默认 5min 会在 staleTime 内就回收缓存导致重复请求）；`refetchOnWindowFocus`/`refetchOnReconnect` 均关闭，桌面端焦点切换/网络恢复不触发后台重拉。收藏 mutation **乐观直写全部缓存**（`patchCachedCollections`）+ 失败回滚，成功仅精准失效单条、列表只置 stale 不重拉——勿恢复对 `["collections"]` 的全量失效（会触发 5 类全量分页重拉）。**新增收藏仅乐观插入对应 subjectType 的列表缓存**（勿按 `["collections", username]` 前缀遍历插入全部 5 类——同一 stub 被多类缓存持有后，「全部」视图 flatMap 会渲染出重复卡片）；`getAllUserCollections` 分页拼接时按 `subject_id` 去重（并发翻页期间服务端列表变动平移 offset 可致跨页重复）。收藏状态读取一律走 `useUserCollectionSmart`（先查列表缓存，命中零请求；其返回的 `refetch` 供 CollectAction 失败态重试），勿直接单条 GET。三个 keep-alive 页面均由 App 内 `*Visited` 门控（`watchlistVisited`/`calendarVisited`/`collectionVisited`），首次进入对应页才拉取，冷启动停在其他页零请求
+- **缓存与乐观更新**：TanStack Query（条目详情/剧集 30min，日历/热度 10min，收藏列表 1min，单条收藏 2min，搜索 5min，p1 扩展 1h）。全局 `gcTime` 30min（默认 5min 会在 staleTime 内就回收缓存导致重复请求）；`refetchOnWindowFocus`/`refetchOnReconnect` 均关闭，桌面端焦点切换/网络恢复不触发后台重拉。收藏 mutation **乐观直写全部缓存**（`patchCachedCollections`）+ 失败回滚——onMutate 同时取消单条与列表的 in-flight refetch（防落地覆盖乐观值），回滚带**引用守卫**（比对缓存当前引用是否仍为本次乐观写入的引用，被并发 mutation/回滚动过则跳过该 key，防互抹），成功仅精准失效单条、列表只置 stale 不重拉——勿恢复对 `["collections"]` 的全量失效（会触发 5 类全量分页重拉）。**新增收藏仅乐观插入对应 subjectType 的列表缓存**（勿按 `["collections", username]` 前缀遍历插入全部 5 类——同一 stub 被多类缓存持有后，「全部」视图 flatMap 会渲染出重复卡片）；`getAllUserCollections` 分页拼接时按 `subject_id` 去重（并发翻页期间服务端列表变动平移 offset 可致跨页重复）。收藏状态读取一律走 `useUserCollectionSmart`（先查列表缓存，命中零请求；列表正在拉取时挂起单条 fallback 且保持 isLoading 语义，避免多余请求；其返回的 `refetch` 供 CollectAction 失败态重试），勿直接单条 GET。三个 keep-alive 页面均由 App 内 `*Visited` 门控（`watchlistVisited`/`calendarVisited`/`collectionVisited`），首次进入对应页才拉取，冷启动停在其他页零请求
 - **未登录引导**：冷启动认证判定完成后仍无用户且用户从未手动切页（App 内 `userInteracted` ref，侧边栏导航经 `navigate()` 置位）→ 自动落地**新番页**（游客可浏览公开数据，空追番页对游客零价值）；注销/会话失效同样适用。追番页未登录空态提供「去认证 / 先逛逛新番」按钮、找番页未登录横幅提供「去认证」按钮（均经 `onNavigate` 回调由 App 注入）；配置页认证区内置可折叠三步凭据创建向导（动态端口模式无需登记回调）
 - **今日放送标识**：追番页在看/想看条目经 `useTodayAiringIds`（`lib/today.ts`）匹配每日放送日历缓存（`["calendar"]` 与新番页/热度榜兜底共用，缓存命中零额外请求；60s 心跳跨 0 点自动迁移）——列表行标题行「今天更新」徽标（`SubjectRow todayAiring`）+ 网格卡封面左上「今日」角标（与 R18 同排）+ 组头「今日更新 N 部」计数；**仅在看/想看组**（看过/搁置/抛弃不放送不打扰）
 - **统一详情容器**：`SubjectDetailView` 是全应用唯一的详情渲染单元（inline=展开行 / dialog=弹窗），字段顺序、加载骨架、错误重试、p1 区块只写一份；收藏/外链操作位于标题行（列表行或弹窗头部），「我的」折叠栏承载评分/进度/备注。dialog 变体分两层：上半固定区（封面+字段/标签/我的）+ 下半滚动区（简介/剧集/p1，负边距铺满弹窗宽度、上边框 + `bg-muted/30` 与固定区分层）
@@ -127,7 +129,7 @@ CI 在 `windows-latest`：安装依赖 → `npm run tauri build` → 打包便�
 - **204/空 body**：`bgmRequest` 统一用 `res.text()` 读取，空则返回 undefined，避免 JSON 解析报错
 - **SlimSubject vs Subject**：列表接口返回 SlimSubject（`short_summary`/顶层 `score`），完整 Subject 仅 `GET /v0/subjects/{id}` 有 `summary`/`rating.score`/`total_episodes`
 - **infobox 形状多态**：Bangumi 部分条目 infobox 缺 `values` 或整体非数组，渲染前必须容错（`infoboxValue`）；详情树包 ErrorBoundary，数据异常只降级单区块不白屏
-- **p1 私有接口**（next.bgm.tv，无官方文档）：解析宽松、失败静默降级（区块直接隐藏），缓存 1h（`lib/p1.ts`）。**响应形状会漂移**：2026-09 实测 characters/relations/recs 由顶层数组变为 `{data:[...],total}` 包装、条目嵌套 `character`/`subject` 键、`relation` 变对象、CV 键 `cast`→`casts[].person`——`p1.ts` 统一解包归一化为扁平类型（列表 getter 返回 `{items,total}`，total 供截断校验），渲染层与 `types/bgm.ts` 不感知，改形状时只动 p1.ts；`/p1/characters/{id}`、`/p1/persons/{id}` 详情端点形状未实测，`normalizePerson` 宽松归一化「能取多少取多少」，弹窗 UI 降级；部分条目数据本身为空（`{"data":[],"total":0}`），按空数据隐藏非异常（详见 `docs/API.md` p1 章节）
-- **收藏默认私密**：POST collection 恒带 `private:true`（新增收藏默认私密）；PATCH 的 `private` 由 queries 层组装——`usePatchCollection` 以 vars `currentPrivate`（各调用点传 `col.private`）兜底、显式切换传 `private` 字段（「我的」头部私密开关），**勿在 bgm 层重新硬编码 private**（会把网页端设为公开的收藏重置回私密）；服务端要求改非 type 字段必带 private
+- **p1 私有接口**（next.bgm.tv，无官方文档）：解析宽松、失败静默降级（区块直接隐藏），缓存 1h（`lib/p1.ts`）。**响应形状会漂移**：2026-09 实测 characters/relations/recs 由顶层数组变为 `{data:[...],total}` 包装、条目嵌套 `character`/`subject` 键、`relation` 变对象、CV 键 `cast`→`casts[].person`——`p1.ts` 统一解包归一化为扁平类型（列表 getter 返回 `{items,total}`，total 供截断校验），渲染层不感知，改形状时只动 p1.ts；`types/bgm.ts` 的 p1 列表类型按归一化真实产出声明——**除恒构造字段（`P1Character.cast` 数组、`P1Relation.relation` 空串兜底）外顶层字段（含 id/name）全可选**，渲染层对缺失容错（无名回退 `#id`/「未知」），勿把字段改回必填（形状漂移时 tsc 会静默放过未容错取用）；`/p1/characters/{id}`、`/p1/persons/{id}` 详情端点形状未实测，`normalizePerson` 宽松归一化「能取多少取多少」，弹窗 UI 降级；部分条目数据本身为空（`{"data":[],"total":0}`），按空数据隐藏非异常（详见 `docs/API.md` p1 章节）
+- **收藏默认私密**：POST collection 恒带 `private:true`（新增收藏默认私密）；PATCH 的 `private` 由 queries 层组装——`usePatchCollection` 以 vars `currentPrivate`（各调用点传 `col.private`）兜底、显式切换传 `private` 字段（「我的」头部私密开关），备份恢复的 PATCH 同样透传（`backup.ts` entryPatch `private: c.private ?? true`），**勿在 bgm 层重新硬编码 private**（会把网页端设为公开的收藏重置回私密）；服务端要求改非 type 字段必带 private
 - **不提供「取消收藏」**：Bangumi v0 API 无取消收藏条目端点——官方 OpenAPI 对 `/v0/users/-/collections/{subject_id}` 只定义 post/patch，服务端 routes.go 相关 DELETE 注释为 `TODO: wait for soft delete`（人物/角色同理），实测 DELETE 返回框架默认 404。相关调用代码已移除，勿凭文档加回
 - **Bangumi API base**：`https://api.bgm.tv`（v0），OAuth 用 `https://bgm.tv`
