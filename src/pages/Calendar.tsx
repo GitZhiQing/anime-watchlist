@@ -7,6 +7,7 @@ import {
   Check,
   ChevronDown,
   Loader2,
+  LocateFixed,
   Minus,
   Plus,
   RefreshCw,
@@ -319,6 +320,11 @@ export function Calendar({ visited = true }: CalendarProps) {
     DEFAULT_SEASON_SORT,
   );
   const seasonSort = isSeasonSort(rawSeasonSort) ? rawSeasonSort : DEFAULT_SEASON_SORT;
+  /** 分组折叠状态持久化（组 id：本季为星期 1-7，季度为「年-月」，均稳定；
+   *  未登记的新组 id 默认展开。键量有限不做清理） */
+  const [groupsOpen, setGroupsOpen] = usePersistentState<
+    Record<string | number, boolean>
+  >("prefs.calendar.openMap", {});
   const [thresholdInput, setThresholdInput] = useState("100");
   const [keyword, setKeyword] = useState("");
 
@@ -421,6 +427,20 @@ export function Calendar({ visited = true }: CalendarProps) {
     setThreshold(next);
     setThresholdInput(String(next));
   }
+
+  /** 本季模式：滚动定位到「今天」分组（组容器带 cal-group-{weekday} 锚点 id） */
+  function scrollToToday() {
+    document
+      .getElementById(`cal-group-${getTodayBangumiWeekday()}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  /** 「今天」分组是否存在且有条目（控制「跳到今天」按钮显隐） */
+  const hasTodayGroup = useMemo(() => {
+    if (season) return false;
+    const todayId = getTodayBangumiWeekday();
+    return (filteredGroups ?? []).some((g) => g.id === todayId && g.items.length > 0);
+  }, [filteredGroups, season]);
 
   /* ---- 内容 ---- */
 
@@ -556,6 +576,18 @@ export function Calendar({ visited = true }: CalendarProps) {
             </div>
           )}
 
+          {/* 跳到今天（仅本季模式且今日组有条目时显示） */}
+          {hasTodayGroup && (
+            <Button
+              variant="outline"
+              size="icon-sm"
+              onClick={scrollToToday}
+              title="跳到今天"
+            >
+              <LocateFixed className="size-4" />
+            </Button>
+          )}
+
           {/* 刷新按钮 */}
           <Button
             variant="outline"
@@ -586,7 +618,14 @@ export function Calendar({ visited = true }: CalendarProps) {
       ) : (
         <>
           {filteredHasItems ? (
-            <SubjectGroups groups={filteredGroups} viewMode={view} />
+            <SubjectGroups
+              groups={filteredGroups}
+              viewMode={view}
+              openMap={groupsOpen}
+              onOpenChange={(id, open) =>
+                setGroupsOpen((m) => ({ ...m, [id]: open }))
+              }
+            />
           ) : (
             <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
               {keyword.trim()
@@ -618,28 +657,24 @@ function metricCaption(count?: number, label?: string): string | undefined {
 interface SubjectGroupsProps {
   groups: RenderGroup[];
   viewMode: ViewMode;
+  /** 折叠状态（由页面持久化）；未登记的新分组 id 默认展开 */
+  openMap: Record<string | number, boolean>;
+  onOpenChange: (id: string | number, open: boolean) => void;
 }
 
 /** 折叠分组渲染：本季按星期（今日高亮）、季度按开播月，列表行 / 网格卡片两种内容。
- *  openMap 只在首挂载建立（默认全开），切换季度出现的新分组 id 未登记时按展开处理。 */
-function SubjectGroups({ groups, viewMode }: SubjectGroupsProps) {
-  const [openMap, setOpenMap] = useState<Record<string | number, boolean>>(() => {
-    const initial: Record<string | number, boolean> = {};
-    for (const g of groups) initial[g.id] = true;
-    return initial;
-  });
-
+ *  组容器带 cal-group-{id} 锚点（「跳到今天」滚动定位用）。 */
+function SubjectGroups({ groups, viewMode, openMap, onOpenChange }: SubjectGroupsProps) {
   return (
     <div className="space-y-3">
       {groups.map((g) => (
         <SubjectGroup
           key={g.id}
+          id={`cal-group-${g.id}`}
           title={g.title}
           count={g.items.length}
           open={openMap[g.id] ?? true}
-          onOpenChange={(o) =>
-            setOpenMap((m) => ({ ...m, [g.id]: o }))
-          }
+          onOpenChange={(o) => onOpenChange(g.id, o)}
           headerClassName={g.isToday ? "bg-primary/15 hover:bg-primary/20" : undefined}
         >
           {g.items.length === 0 ? (

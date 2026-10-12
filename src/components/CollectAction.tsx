@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Loader2, Plus } from "lucide-react";
+import { Check, ChevronDown, Loader2, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,7 +34,7 @@ interface CollectActionProps {
 export function CollectAction({ subjectId, subject, size = "sm" }: CollectActionProps) {
   const { user } = useAuthUser();
   const username = user?.username;
-  const { data, isLoading, error } = useUserCollectionSmart(
+  const { data, isLoading, error, refetch } = useUserCollectionSmart(
     username,
     subjectId,
   );
@@ -82,14 +82,17 @@ export function CollectAction({ subjectId, subject, size = "sm" }: CollectAction
   }
 
   if (error) {
+    // 状态读取失败：可点击重试（重新读单条收藏状态），错误详情放 title
     return (
       <Button
         variant="ghost"
         size={size}
-        disabled
+        onClick={() => void refetch()}
         title={error instanceof Error ? error.message : String(error)}
+        className="gap-1"
       >
-        收藏失败
+        <RefreshCw className="size-3" />
+        重试
       </Button>
     );
   }

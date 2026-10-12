@@ -1,8 +1,7 @@
 import { useRef, useState } from "react";
-import { Check, ChevronDown, Filter, Flame, Loader2, X } from "lucide-react";
+import { Check, ChevronDown, Filter, Flame, Loader2, RefreshCw, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   DropdownMenu,
@@ -13,6 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { EnrichedSubjectRow } from "@/components/EnrichedSubjectRow";
+import { SearchInput } from "@/components/SearchInput";
 import { useSearchSubjects, useTrendingFeed } from "@/lib/queries";
 import { SUBJECT_LABELS, SUBJECT_TYPES, SubjectType } from "@/types/bgm";
 import { cn } from "@/lib/utils";
@@ -41,7 +41,7 @@ function RowSkeletons({ rows = 4 }: { rows?: number }) {
 
 /** 收藏页空态：热度榜。优先 p1 新增热度，接口失败自动兜底本周追番热度。 */
 function TrendingList({ enabled }: { enabled: boolean }) {
-  const { data, isLoading, isFallback } = useTrendingFeed(
+  const { data, isLoading, isFallback, refetch, isRefetching } = useTrendingFeed(
     SubjectType.Anime,
     20,
     enabled,
@@ -77,6 +77,16 @@ function TrendingList({ enabled }: { enabled: boolean }) {
             热度接口暂不可用，已按追番人数展示
           </span>
         )}
+        <Button
+          variant="outline"
+          size="icon-sm"
+          className="ml-auto"
+          title="刷新"
+          disabled={isRefetching}
+          onClick={() => void refetch()}
+        >
+          <RefreshCw className={cn("size-4", isRefetching && "animate-spin")} />
+        </Button>
       </div>
       <div className="space-y-1">
         {data.map((it) => (
@@ -112,12 +122,19 @@ export function Collection({ visited = true }: CollectionProps) {
   );
   const [historyOpen, setHistoryOpen] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
-  // 条目类型过滤，默认动画
-  const [subjectType, setSubjectType] = useState<SubjectType | undefined>(
+  // 条目类型过滤，默认动画，持久化。store 无法区分「存过 undefined」与「未存」
+  //（setStore(undefined) 即删键，删键又回默认值动画），故用哨兵值 0 表示「全部」
+  const [storedType, setStoredType] = usePersistentState<number>(
+    "prefs.collection.subjectType",
     SubjectType.Anime,
   );
+  const subjectType: SubjectType | undefined = SUBJECT_TYPES.includes(
+    storedType as SubjectType,
+  )
+    ? (storedType as SubjectType)
+    : undefined;
 
-  const { data, isFetching, error, fetchNextPage, hasNextPage, isFetchingNextPage } =
+  const { data, isFetching, error, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useSearchSubjects(submitted ?? "", subjectType, !!submitted);
   const results = data?.pages.flatMap((p) => p.data) ?? [];
   const total = data?.pages[0]?.total ?? 0;
@@ -143,29 +160,27 @@ export function Collection({ visited = true }: CollectionProps) {
               );
           }}
         >
-          <Input
-            ref={inputRef}
+          <SearchInput
+            inputRef={inputRef}
             value={keyword}
-            onChange={(e) => {
-              const v = e.target.value;
+            onChange={(v) => {
               setKeyword(v);
               // 清空搜索框后回到初始态（热度榜）
               if (!v.trim()) setSubmitted(null);
             }}
             placeholder="输入条目名称搜索"
-            data-search-input
             className="flex-1"
           />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" type="button" className="gap-1">
+              <Button variant="outline" size="sm" type="button" className="gap-1">
                 <Filter className="size-3.5" />
                 {subjectType ? SUBJECT_LABELS[subjectType] : "全部"}
                 <ChevronDown className="size-3.5" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setSubjectType(undefined)}>
+              <DropdownMenuItem onClick={() => setStoredType(0)}>
                 <Check
                   className={cn(
                     "size-3.5",
@@ -176,7 +191,7 @@ export function Collection({ visited = true }: CollectionProps) {
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               {SUBJECT_TYPES.map((t) => (
-                <DropdownMenuItem key={t} onClick={() => setSubjectType(t)}>
+                <DropdownMenuItem key={t} onClick={() => setStoredType(t)}>
                   <Check
                     className={cn(
                       "size-3.5",
@@ -188,7 +203,7 @@ export function Collection({ visited = true }: CollectionProps) {
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button type="submit" disabled={isFetching || !keyword.trim()}>
+          <Button type="submit" size="sm" disabled={isFetching || !keyword.trim()}>
             {isFetching ? (
               <Loader2 className="size-4 animate-spin" />
             ) : (
@@ -264,9 +279,17 @@ export function Collection({ visited = true }: CollectionProps) {
               <p className="text-sm text-muted-foreground">未找到结果，试试其他关键词</p>
             )}
             {error && (
-              <p className="text-sm text-destructive">
-                {error instanceof Error ? error.message : "搜索失败"}
-              </p>
+              <div className="flex items-center gap-2 text-sm text-destructive">
+                <span>{error instanceof Error ? error.message : "搜索失败"}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-xs"
+                  onClick={() => refetch()}
+                >
+                  <RefreshCw className="size-3" /> 重试
+                </Button>
+              </div>
             )}
             {isFetching && results.length === 0 && <RowSkeletons rows={5} />}
             {total > 0 && (

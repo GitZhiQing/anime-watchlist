@@ -1,5 +1,5 @@
 // Store 插件封装：本地 KV 配置文件 config.json。
-// 存放 OAuth 凭据、token、用户资料缓存、主题等。
+// 存放 OAuth 凭据、token、用户资料缓存、代理与界面偏好等。
 import { LazyStore } from "@tauri-apps/plugin-store";
 
 const store = new LazyStore("config.json");
@@ -23,7 +23,6 @@ export const StoreKeys = {
   refreshToken: "refresh_token",
   expiresAt: "expires_at", // epoch ms
   user: "user", // 缓存的 BgmUser
-  theme: "theme",
   proxy: "proxy", // ProxyConfig | undefined
   // 本次换 token 用的 redirect_uri（动态端口下为 http://localhost:{P}/callback），
   // 供 doRefresh 读取——刷新时传的 redirect_uri 必须与换 token 时一致。

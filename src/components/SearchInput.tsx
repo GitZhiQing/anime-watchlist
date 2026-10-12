@@ -1,3 +1,4 @@
+import type { Ref } from "react";
 import { Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -8,6 +9,8 @@ interface SearchInputProps {
   placeholder?: string;
   /** 包裹层宽度由调用方控制（如 w-full max-w-md） */
   className?: string;
+  /** 透传给内部 Input 的 ref（如搜索历史点击后聚焦） */
+  inputRef?: Ref<HTMLInputElement>;
 }
 
 /** 本地搜索输入框：放大镜图标 + 一键清除。内容区顶部搜索栏用。 */
@@ -16,11 +19,13 @@ export function SearchInput({
   onChange,
   placeholder,
   className,
+  inputRef,
 }: SearchInputProps) {
   return (
     <div className={cn("relative", className)}>
       <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
       <Input
+        ref={inputRef}
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}

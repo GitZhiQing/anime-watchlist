@@ -181,9 +181,20 @@ export function useUserCollectionSmart(
   });
 
   if (cached !== undefined) {
-    return { data: cached, isLoading: false, error: null as Error | null };
+    return {
+      data: cached,
+      isLoading: false,
+      error: null as Error | null,
+      // 缓存命中时无错误用不到；回退单条请求失败时供 CollectAction 重试
+      refetch: fallback.refetch,
+    };
   }
-  return { data: fallback.data, isLoading: fallback.isLoading, error: fallback.error };
+  return {
+    data: fallback.data,
+    isLoading: fallback.isLoading,
+    error: fallback.error,
+    refetch: fallback.refetch,
+  };
 }
 
 /**
@@ -406,6 +417,9 @@ export function useTrendingFeed(
     isLoading,
     /** 是否走了日历兜底（UI 据此调整「热度/追番中」文案） */
     isFallback: !!trending.isError && !!calendar.data,
+    /** 重试 p1 热度榜（仍失败则继续日历兜底），供热度榜刷新按钮 */
+    refetch: trending.refetch,
+    isRefetching: trending.isRefetching,
   };
 }
 

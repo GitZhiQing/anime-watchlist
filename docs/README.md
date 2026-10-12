@@ -7,6 +7,7 @@
 | 文档 | 内容 |
 |---|---|
 | [API.md](API.md) | **Bangumi API 总文档**：来源总览（v0 官方 `api.bgm.tv` + p1 私有 `next.bgm.tv`）、OAuth 认证、通用 HTTP 约定、全部在用端点与实测结论 |
+| [roadmap.md](roadmap.md) | **产品审视与完善路线图**：双视角（产品经理/二次元用户）backlog，P0 三件事 + 体验债速查表 + API 硬限制备忘，完成一项勾一项 |
 | [dev/dev.md](dev/dev.md) | 项目概览：技术栈、页面布局、功能说明 |
 | [dev/tech.md](dev/tech.md) | 技术报告：架构决策、版本管理、构建与发布 |
 | [dev/release.md](dev/release.md) | 版本更新与发布手册：更新 vs 发布、CI 触发、验证 |
