@@ -1,5 +1,6 @@
-import { useRef, useState } from "react";
-import { Check, ChevronDown, Filter, Flame, Loader2, RefreshCw, X } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
+import { ArrowDownWideNarrow, Check, ChevronDown, Filter, Flame, Loader2, RefreshCw, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,6 +14,8 @@ import {
 import { PageLayout } from "@/components/layout/PageLayout";
 import { EnrichedSubjectRow } from "@/components/EnrichedSubjectRow";
 import { SearchInput } from "@/components/SearchInput";
+import { SubjectGridCard } from "@/components/SubjectGridCard";
+import { ViewTabs, type ViewMode } from "@/components/ViewTabs";
 import { useSearchSubjects, useTrendingFeed } from "@/lib/queries";
 import { SUBJECT_LABELS, SUBJECT_TYPES, SubjectType } from "@/types/bgm";
 import { cn } from "@/lib/utils";
@@ -21,6 +24,23 @@ import { usePersistentState } from "@/hooks/usePersistentState";
 import type { PageKey } from "@/App";
 
 const MAX_HISTORY = 10;
+
+/** 搜索结果排序（客户端，作用于已加载条目）：match=接口相关度原序 */
+type ResultSortKey = "match" | "score" | "name";
+const RESULT_SORT_LABELS: Record<ResultSortKey, string> = {
+  match: "默认",
+  score: "评分",
+  name: "名称",
+};
+
+/** 搜索结果/热度榜网格容器（与追番/新番网格同规格） */
+function GridView({ children }: { children: ReactNode }) {
+  return (
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-3">
+      {children}
+    </div>
+  );
+}
 
 /** 行骨架（搜索中/热度榜加载中） */
 function RowSkeletons({ rows = 4 }: { rows?: number }) {
@@ -41,7 +61,7 @@ function RowSkeletons({ rows = 4 }: { rows?: number }) {
 }
 
 /** 收藏页空态：热度榜。优先 p1 新增热度，接口失败自动兜底本周追番热度。 */
-function TrendingList({ enabled }: { enabled: boolean }) {
+function TrendingList({ enabled, viewMode }: { enabled: boolean; viewMode: ViewMode }) {
   const { data, isLoading, isFallback, refetch, isRefetching } = useTrendingFeed(
     SubjectType.Anime,
     20,
@@ -89,20 +109,32 @@ function TrendingList({ enabled }: { enabled: boolean }) {
           <RefreshCw className={cn("size-4", isRefetching && "animate-spin")} />
         </Button>
       </div>
-      <div className="space-y-1">
-        {data.map((it) => (
-          <EnrichedSubjectRow
-            key={it.subject.id}
-            subject={it.subject}
-            extraInfo={
-              <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground">
-                <Flame className="size-3 text-orange-500/80" />
-                {isFallback ? "追番中" : "热度"} {it.heat}
-              </span>
-            }
-          />
-        ))}
-      </div>
+      {viewMode === "grid" ? (
+        <GridView>
+          {data.map((it) => (
+            <SubjectGridCard
+              key={it.subject.id}
+              subject={it.subject}
+              caption={`${isFallback ? "追番中" : "热度"} ${it.heat}`}
+            />
+          ))}
+        </GridView>
+      ) : (
+        <div className="space-y-1">
+          {data.map((it) => (
+            <EnrichedSubjectRow
+              key={it.subject.id}
+              subject={it.subject}
+              extraInfo={
+                <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground">
+                  <Flame className="size-3 text-orange-500/80" />
+                  {isFallback ? "追番中" : "热度"} {it.heat}
+                </span>
+              }
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -142,8 +174,60 @@ export function Collection({ visited = true, onNavigate }: CollectionProps) {
   const results = data?.pages.flatMap((p) => p.data) ?? [];
   const total = data?.pages[0]?.total ?? 0;
 
+  // 视图切换（与追番/新番共用 ViewTabs），持久化；旧/非法存值归一化为列表
+  const [rawViewMode, setViewMode] = usePersistentState<ViewMode>(
+    "prefs.collection.viewMode",
+    "list",
+  );
+  const view: ViewMode = rawViewMode === "grid" ? "grid" : "list";
+
+  // 搜索结果排序（会话内状态，不持久化）：客户端对已加载条目排序
+  const [resultSort, setResultSort] = useState<ResultSortKey>("match");
+  const sortedResults = useMemo(() => {
+    if (resultSort === "match") return results;
+    const arr = [...results];
+    arr.sort((a, b) =>
+      resultSort === "score"
+        ? (b.score ?? 0) - (a.score ?? 0)
+        : (a.name_cn || a.name).localeCompare(b.name_cn || b.name, "zh-Hans-CN"),
+    );
+    return arr;
+  }, [results, resultSort]);
+
   return (
-    <PageLayout title="找番">
+    <PageLayout
+      title="找番"
+      toolbar={
+        <>
+          {/* 结果排序（仅搜索态显示）：客户端对已加载条目排序，tooltip 说明 */}
+          {submitted && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1" title="对已加载条目排序">
+                  <ArrowDownWideNarrow className="size-3.5" />
+                  {RESULT_SORT_LABELS[resultSort]}
+                  <ChevronDown className="size-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {(Object.keys(RESULT_SORT_LABELS) as ResultSortKey[]).map((k) => (
+                  <DropdownMenuItem key={k} onClick={() => setResultSort(k)}>
+                    <Check
+                      className={cn(
+                        "size-3.5",
+                        resultSort === k ? "opacity-100" : "opacity-0",
+                      )}
+                    />
+                    {RESULT_SORT_LABELS[k]}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          <ViewTabs value={view} onChange={setViewMode} />
+        </>
+      }
+    >
       <div className="space-y-4">
         {!user && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -310,11 +394,23 @@ export function Collection({ visited = true, onNavigate }: CollectionProps) {
                 已加载 {results.length} / 共 {total} 条
               </p>
             )}
-            <div className="space-y-1">
-              {results.map((s) => (
-                <EnrichedSubjectRow key={s.id} subject={s} />
-              ))}
-            </div>
+            {view === "grid" ? (
+              <GridView>
+                {sortedResults.map((s) => (
+                  <SubjectGridCard
+                    key={s.id}
+                    subject={s}
+                    caption={s.score ? `评分 ${s.score}` : undefined}
+                  />
+                ))}
+              </GridView>
+            ) : (
+              <div className="space-y-1">
+                {sortedResults.map((s) => (
+                  <EnrichedSubjectRow key={s.id} subject={s} />
+                ))}
+              </div>
+            )}
             {hasNextPage && (
               <div className="flex justify-center pt-2">
                 <Button
@@ -335,7 +431,7 @@ export function Collection({ visited = true, onNavigate }: CollectionProps) {
             )}
           </>
         ) : (
-          <TrendingList enabled={visited} />
+          <TrendingList enabled={visited} viewMode={view} />
         )}
       </div>
     </PageLayout>
