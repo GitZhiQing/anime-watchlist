@@ -462,15 +462,16 @@ export function SubjectDetailView({
 
     body =
       variant === "dialog" ? (
-        <div className="flex min-h-0 flex-1 flex-col pt-2">
+        <div className="flex min-h-0 flex-1 flex-col">
           {/* 固定区：封面+字段 / 标签 / 我的（折叠） */}
-          <div className="shrink-0 space-y-2">
+          <div className="shrink-0 space-y-2 pt-2 pb-3">
             {coverAndFields}
             {tags}
             <MySection subjectId={subjectId} detail={detail} />
           </div>
-          {/* 滚动区：简介 + 剧集列表 + p1 扩展（角色/关联/推荐） */}
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pt-2">
+          {/* 滚动区：简介 + 剧集列表 + p1 扩展。负边距抵消弹窗内距铺满宽度，
+              上边框 + 浅底色与固定区形成面板层次 */}
+          <div className="scrollbar-thin -mx-4 -mb-4 min-h-0 flex-1 space-y-3 overflow-y-auto border-t border-border bg-muted/30 px-4 pt-3 pb-4">
             <SubjectSummary summary={detail.summary} />
             <SubjectEpisodesSection subjectId={subjectId} />
             <SubjectP1Sections subjectId={subjectId} />
