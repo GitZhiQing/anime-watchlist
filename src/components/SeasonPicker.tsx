@@ -1,13 +1,13 @@
 import { useMemo } from "react";
-import { CalendarDays, Check, ChevronDown } from "lucide-react";
+import { CalendarDays, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SegmentedControl } from "@/components/SegmentedControl";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { cn } from "@/lib/utils";
 import type { SeasonKey, SeasonSelection } from "@/types/bgm";
 
 /** 年份下拉覆盖到最早年份 */
@@ -75,47 +75,33 @@ export function SeasonPicker({ value, onChange }: SeasonPickerProps) {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start">
           {years.map((y) => (
-            <DropdownMenuItem
+            <DropdownMenuCheckboxItem
               key={y}
+              // 本季模式下按触发器显示的年份打勾，避免「显示 2026 却无一项选中」
+              checked={activeYear === y}
               // 本季模式下选年 = 该年 + 当前季度（如 2026-09 点 2025 → 2025年7月）
-              onClick={() => onChange({ year: y, season: value?.season ?? current.season })}
+              onSelect={() => onChange({ year: y, season: value?.season ?? current.season })}
             >
-              <Check
-                className={cn(
-                  "size-3.5",
-                  // 本季模式下按触发器显示的年份打勾，避免「显示 2026 却无一项选中」
-                  activeYear === y ? "opacity-100" : "opacity-0",
-                )}
-              />
               {y} 年
-            </DropdownMenuItem>
+            </DropdownMenuCheckboxItem>
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {/* 季度：四段分段控件（样式对齐配置页的分段控件：选中 primary 反白）。
-          未来季度同样可选——接口会返回已公布的下季条目（未定档的 date 为 null） */}
-      <div className="inline-flex rounded-md border border-border p-0.5">
-        {SEASON_KEYS.map((k) => {
-          const selected = value !== null && value.year === activeYear && value.season === k;
-          return (
-            <button
-              key={k}
-              type="button"
-              title={`${activeYear} 年 ${SEASON_LABELS[k]}新番`}
-              onClick={() => onChange({ year: activeYear, season: k })}
-              className={cn(
-                "rounded px-3 py-1 text-sm transition-colors",
-                selected
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
-              )}
-            >
-              {SEASON_LABELS[k]}
-            </button>
-          );
-        })}
-      </div>
+      {/* 季度：四段分段单选（语义 radiogroup，方向键移焦点、Space/Enter 确认——
+          切换季度有数据请求成本，不采用 focus 即选中）。未来季度同样可选——
+          接口会返回已公布的下季条目（未定档的 date 为 null） */}
+      <SegmentedControl<SeasonKey>
+        ariaLabel="季度"
+        options={SEASON_KEYS.map((k) => ({
+          value: k,
+          label: SEASON_LABELS[k],
+          title: `${activeYear} 年 ${SEASON_LABELS[k]}新番`,
+        }))}
+        value={value !== null && value.year === activeYear ? value.season : null}
+        onChange={(k) => onChange({ year: activeYear, season: k })}
+        arrowSelects={false}
+      />
     </div>
   );
 }

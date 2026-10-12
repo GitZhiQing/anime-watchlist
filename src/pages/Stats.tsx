@@ -73,11 +73,13 @@ function Kpi({
   );
 }
 
-/** 评分纵向直方图：10 列高度 ∝ 数量，柱顶标计数、柱底标分数 */
+/** 评分纵向直方图：10 列高度 ∝ 数量，柱顶标计数、柱底标分数。
+ *  视觉图表对读屏不可达——外层 role="img" 提供一次可读的概要。 */
 function RatingHistogram({ data }: { data: StatsBar[] }) {
   const max = Math.max(1, ...data.map((d) => d.value));
+  const rated = data.reduce((s, d) => s + d.value, 0);
   return (
-    <div>
+    <div role="img" aria-label={`我的评分分布直方图，共 ${rated} 条已评，横轴 1 到 10 分`}>
       <div className="flex h-24 items-end gap-1.5">
         {data.map((d) => (
           <div

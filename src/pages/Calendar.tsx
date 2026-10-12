@@ -4,7 +4,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDownWideNarrow,
   ArrowUpNarrowWide,
-  Check,
   ChevronDown,
   Loader2,
   LocateFixed,
@@ -18,8 +17,8 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { PageLayout } from "@/components/layout/PageLayout";
@@ -32,7 +31,7 @@ import { EnrichedSubjectRow } from "@/components/EnrichedSubjectRow";
 import { SeasonPicker, SEASON_LABELS, currentSeasonSelection } from "@/components/SeasonPicker";
 import { subjectQueryOptions, useCalendar, useSeasonSubjects } from "@/lib/queries";
 import { usePersistentState } from "@/hooks/usePersistentState";
-import { cn } from "@/lib/utils";
+import { cn, prefersReducedMotion } from "@/lib/utils";
 import type {
   CalendarDay,
   CalendarSubject,
@@ -127,10 +126,10 @@ function calendarToSlimSubject(cs: CalendarSubject): SlimSubject {
     name: cs.name,
     name_cn: cs.name_cn,
     short_summary: cs.summary,
-    // 共性字段映射到 SlimSubject，使 MetaRow（评分/话数/放送日期）与追番、收藏页一致
-    // date 后拼接星期，用    保持与 MetaRow gap-x-3 一致的间距
+    // 共性字段映射到 SlimSubject，使 MetaRow（评分/话数/放送日期）与追番、收藏页一致；
+    // date 后以间隔号拼接星期（视觉间距稳定，不依赖空格宽度）
     date: cs.air_date
-      ? `${cs.air_date}    周${WEEKDAY_CN[cs.air_weekday] || ""}`
+      ? `${cs.air_date} · 周${WEEKDAY_CN[cs.air_weekday] || ""}`
       : "",
     images: cs.images ?? {},
     eps: cs.eps || cs.eps_count || undefined,
@@ -412,29 +411,30 @@ export function Calendar({ visited = true }: CalendarProps) {
   /* 当前关键指标：季度模式随所选季度自适应，本季每周放送恒为在看 */
   const activeMetric = season ? seasonMetric(season) : "doing";
 
-  /* 应用阈值（失焦或回车时） */
+  /* 应用阈值（失焦或回车时）；成功路径的输入框同步统一交给下方 effect，
+   * 失败回写是唯一例外（threshold 未变不会触发 effect） */
   function applyThreshold(value: string) {
     const n = parseInt(value, 10);
     if (!isNaN(n) && n >= 0) {
       setThreshold(n);
-      setThresholdInput(String(n));
     } else {
       setThresholdInput(String(threshold));
     }
   }
 
-  /** 点击 ±100：在当前阈值基础上增减（下限 0），并立即应用。 */
+  /** 点击 ±100：在当前阈值基础上增减（下限 0）；输入框由 effect 同步。 */
   function step(delta: number) {
-    const next = Math.max(0, threshold + delta);
-    setThreshold(next);
-    setThresholdInput(String(next));
+    setThreshold(Math.max(0, threshold + delta));
   }
 
   /** 本季模式：滚动定位到「今天」分组（组容器带 cal-group-{weekday} 锚点 id） */
   function scrollToToday() {
     document
       .getElementById(`cal-group-${getTodayBangumiWeekday()}`)
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      ?.scrollIntoView({
+        behavior: prefersReducedMotion() ? "auto" : "smooth",
+        block: "start",
+      });
   }
 
   /** 「今天」分组是否存在且有条目（控制「跳到今天」按钮显隐） */
@@ -484,34 +484,30 @@ export function Calendar({ visited = true }: CalendarProps) {
                   setSeasonSort((s) => ({ ...s, reversed: !s.reversed }))
                 }
                 title={sortDir === "desc" ? "降序（大→小）" : "升序（小→大）"}
+                aria-label={sortDir === "desc" ? "切换为升序" : "切换为降序"}
               >
                 {sortDir === "desc" ? (
-                  <ArrowDownWideNarrow className="size-3.5" />
+                  <ArrowDownWideNarrow className="size-3.5" aria-hidden="true" />
                 ) : (
-                  <ArrowUpNarrowWide className="size-3.5" />
+                  <ArrowUpNarrowWide className="size-3.5" aria-hidden="true" />
                 )}
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="gap-1">
                     {seasonSortLabel(seasonSort.key, activeMetric)}
-                    <ChevronDown className="size-3.5" />
+                    <ChevronDown className="size-3.5" aria-hidden="true" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   {SEASON_SORT_KEYS.map((k) => (
-                    <DropdownMenuItem
+                    <DropdownMenuCheckboxItem
                       key={k}
-                      onClick={() => setSeasonSort((s) => ({ ...s, key: k }))}
+                      checked={seasonSort.key === k}
+                      onSelect={() => setSeasonSort((s) => ({ ...s, key: k }))}
                     >
-                      <Check
-                        className={cn(
-                          "size-3.5",
-                          seasonSort.key === k ? "opacity-100" : "opacity-0",
-                        )}
-                      />
                       {seasonSortLabel(k, activeMetric)}
-                    </DropdownMenuItem>
+                    </DropdownMenuCheckboxItem>
                   ))}
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -560,19 +556,21 @@ export function Calendar({ visited = true }: CalendarProps) {
                   variant="outline"
                   size="icon-sm"
                   title="加 100"
+                  aria-label="阈值加 100"
                   disabled={active.isLoading}
                   onClick={() => step(100)}
                 >
-                  <Plus className="size-3.5" />
+                  <Plus className="size-3.5" aria-hidden="true" />
                 </Button>
                 <Button
                   variant="outline"
                   size="icon-sm"
                   title="减 100"
+                  aria-label="阈值减 100"
                   disabled={active.isLoading}
                   onClick={() => step(-100)}
                 >
-                  <Minus className="size-3.5" />
+                  <Minus className="size-3.5" aria-hidden="true" />
                 </Button>
               </ButtonGroup>
             </div>
@@ -585,8 +583,9 @@ export function Calendar({ visited = true }: CalendarProps) {
               size="icon-sm"
               onClick={scrollToToday}
               title="跳到今天"
+              aria-label="跳到今天分组"
             >
-              <LocateFixed className="size-4" />
+              <LocateFixed className="size-4" aria-hidden="true" />
             </Button>
           )}
 
@@ -596,18 +595,25 @@ export function Calendar({ visited = true }: CalendarProps) {
             size="icon-sm"
             onClick={() => active.refetch()}
             disabled={active.isFetching || active.isLoading}
-            title="刷新">
-            <RefreshCw className={cn("size-4", (active.isFetching || active.isLoading) && "animate-spin")} />
+            title="刷新"
+            aria-label="刷新">
+            <RefreshCw className={cn("size-4", (active.isFetching || active.isLoading) && "animate-spin")} aria-hidden="true" />
           </Button>
         </>
       }>
       {active.isLoading ? (
-        <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
-          <Loader2 className="mr-2 size-5 animate-spin" />
-          加载数据中...
+        <div
+          role="status"
+          className="flex items-center justify-center py-16 text-sm text-muted-foreground"
+        >
+          <Loader2 className="mr-2 size-5 animate-spin" aria-hidden="true" />
+          加载数据中…
         </div>
       ) : active.error ? (
-        <div className="flex items-center justify-center gap-2 py-16 text-sm text-destructive">
+        <div
+          role="alert"
+          className="flex items-center justify-center gap-2 py-16 text-sm text-destructive"
+        >
           <span>{active.error instanceof Error ? active.error.message : "加载失败"}</span>
           <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => active.refetch()}>
             <RefreshCw className="size-3" /> 重试

@@ -1,14 +1,14 @@
 import { useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowDownWideNarrow, Check, ChevronDown, Filter, Flame, Loader2, RefreshCw, SlidersHorizontal, X } from "lucide-react";
+import { ArrowDownWideNarrow, ChevronDown, Filter, Flame, Loader2, RefreshCw, SlidersHorizontal, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -47,7 +47,7 @@ function GridView({ children }: { children: ReactNode }) {
 /** 行骨架（搜索中/热度榜加载中） */
 function RowSkeletons({ rows = 4 }: { rows?: number }) {
   return (
-    <div className="space-y-2">
+    <div className="space-y-2" role="status" aria-label="加载中">
       {Array.from({ length: rows }, (_, i) => (
         <div key={i} className="flex gap-3 rounded-md p-2">
           <Skeleton className="aspect-[5/7] w-16 shrink-0" />
@@ -214,7 +214,12 @@ export function Collection({ visited = true, onNavigate }: CollectionProps) {
 
   const { data, isFetching, error, refetch, fetchNextPage, hasNextPage, isFetchingNextPage } =
     useSearchSubjects(submitted ?? "", subjectType, advFilter, !!submitted);
-  const results = data?.pages.flatMap((p) => p.data) ?? [];
+  // useMemo 稳定引用：下游 sortedResults 的 useMemo 依赖 results，
+  // 每渲染新建数组会让其形同虚设（非默认排序时逐字符全量重排）
+  const results = useMemo(
+    () => data?.pages.flatMap((p) => p.data) ?? [],
+    [data],
+  );
   const total = data?.pages[0]?.total ?? 0;
 
   // 视图切换（与追番/新番共用 ViewTabs），持久化；旧/非法存值归一化为列表
@@ -254,15 +259,13 @@ export function Collection({ visited = true, onNavigate }: CollectionProps) {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 {(Object.keys(RESULT_SORT_LABELS) as ResultSortKey[]).map((k) => (
-                  <DropdownMenuItem key={k} onClick={() => setResultSort(k)}>
-                    <Check
-                      className={cn(
-                        "size-3.5",
-                        resultSort === k ? "opacity-100" : "opacity-0",
-                      )}
-                    />
+                  <DropdownMenuCheckboxItem
+                    key={k}
+                    checked={resultSort === k}
+                    onSelect={() => setResultSort(k)}
+                  >
                     {RESULT_SORT_LABELS[k]}
-                  </DropdownMenuItem>
+                  </DropdownMenuCheckboxItem>
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
@@ -308,38 +311,33 @@ export function Collection({ visited = true, onNavigate }: CollectionProps) {
               // 清空搜索框后回到初始态（热度榜）
               if (!v.trim()) setSubmitted(null);
             }}
-            placeholder="输入条目名称搜索"
+            placeholder="输入条目名称搜索…"
             className="flex-1"
           />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" type="button" className="gap-1">
-                <Filter className="size-3.5" />
+                <Filter className="size-3.5" aria-hidden="true" />
                 {subjectType ? SUBJECT_LABELS[subjectType] : "全部"}
-                <ChevronDown className="size-3.5" />
+                <ChevronDown className="size-3.5" aria-hidden="true" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setStoredType(0)}>
-                <Check
-                  className={cn(
-                    "size-3.5",
-                    subjectType === undefined ? "opacity-100" : "opacity-0",
-                  )}
-                />
+              <DropdownMenuCheckboxItem
+                checked={subjectType === undefined}
+                onSelect={() => setStoredType(0)}
+              >
                 全部
-              </DropdownMenuItem>
+              </DropdownMenuCheckboxItem>
               <DropdownMenuSeparator />
               {SUBJECT_TYPES.map((t) => (
-                <DropdownMenuItem key={t} onClick={() => setStoredType(t)}>
-                  <Check
-                    className={cn(
-                      "size-3.5",
-                      subjectType === t ? "opacity-100" : "opacity-0",
-                    )}
-                  />
+                <DropdownMenuCheckboxItem
+                  key={t}
+                  checked={subjectType === t}
+                  onSelect={() => setStoredType(t)}
+                >
                   {SUBJECT_LABELS[t]}
-                </DropdownMenuItem>
+                </DropdownMenuCheckboxItem>
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
@@ -413,24 +411,20 @@ export function Collection({ visited = true, onNavigate }: CollectionProps) {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
                 {[undefined, 6, 7, 8, 9].map((n) => (
-                  <DropdownMenuItem
+                  <DropdownMenuCheckboxItem
                     key={n ?? "all"}
-                    onClick={() =>
+                    checked={
+                      advFilter?.minRating === n ||
+                      (n === undefined && !advFilter?.minRating)
+                    }
+                    onSelect={() =>
                       setAdvFilter((prev) =>
                         normalizeAdv({ ...prev, minRating: n }),
                       )
                     }
                   >
-                    <Check
-                      className={cn(
-                        "size-3.5",
-                        advFilter?.minRating === n || (n === undefined && !advFilter?.minRating)
-                          ? "opacity-100"
-                          : "opacity-0",
-                      )}
-                    />
                     {n ? `${n}+ 分` : "评分不限"}
-                  </DropdownMenuItem>
+                  </DropdownMenuCheckboxItem>
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
@@ -494,12 +488,13 @@ export function Collection({ visited = true, onNavigate }: CollectionProps) {
                     <button
                       type="button"
                       title="删除该条历史"
+                      aria-label={`删除搜索历史「${h}」`}
                       className="cursor-pointer rounded-full p-0.5 transition-colors hover:bg-destructive/10 hover:text-destructive"
                       onClick={() =>
                         setHistory((prev) => prev.filter((x) => x !== h))
                       }
                     >
-                      <X />
+                      <X className="size-3" aria-hidden="true" />
                     </button>
                   </Badge>
                 ))}
@@ -514,7 +509,10 @@ export function Collection({ visited = true, onNavigate }: CollectionProps) {
               <p className="text-sm text-muted-foreground">未找到结果，试试其他关键词</p>
             )}
             {error && (
-              <div className="flex items-center gap-2 text-sm text-destructive">
+              <div
+                role="alert"
+                className="flex items-center gap-2 text-sm text-destructive"
+              >
                 <span>{error instanceof Error ? error.message : "搜索失败"}</span>
                 <Button
                   variant="ghost"
@@ -559,7 +557,7 @@ export function Collection({ visited = true, onNavigate }: CollectionProps) {
                 >
                   {isFetchingNextPage ? (
                     <>
-                      <Loader2 className="size-4 animate-spin" /> 加载中...
+                      <Loader2 className="size-4 animate-spin" aria-hidden="true" /> 加载中…
                     </>
                   ) : (
                     "加载更多"

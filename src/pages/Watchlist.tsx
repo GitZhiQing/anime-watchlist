@@ -45,6 +45,52 @@ interface WatchlistProps {
   onNavigate: (page: PageKey) => void;
 }
 
+/** 列表态行内进度（与评分/话数等元信息同一行）：看到第 N 话 + 我的评分。
+ *  定义在模块级：放渲染函数体内会让每次父渲染（如输入关键词）产生新组件类型，
+ *  React 对其子树卸载重挂载而非复用，大列表白白重建 DOM。 */
+function ProgressInfo({ item }: { item: UserCollection }) {
+  const eps = item.subject.eps ?? 0;
+  if (item.ep_status <= 0 && item.rate <= 0) return null;
+  return (
+    <>
+      {item.ep_status > 0 && (
+        <span>
+          看到 {item.ep_status}
+          {eps > 0 ? ` / ${eps}` : ""} 话
+        </span>
+      )}
+      {item.rate > 0 && <span>我评 {item.rate} 分</span>}
+    </>
+  );
+}
+
+/** 分组空态：在看/想看给「去找番搜索」引导，其余仅文案 */
+function EmptyGroup({
+  type,
+  onNavigate,
+}: {
+  type: CollectionType;
+  onNavigate: (page: PageKey) => void;
+}) {
+  const guide = type === CollectionType.Doing || type === CollectionType.Wish;
+  return (
+    <div className="flex flex-col items-center gap-2 px-4 py-6 text-xs text-muted-foreground">
+      <span>暂无{COLLECTION_LABELS[type]}条目</span>
+      {guide && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1 text-xs"
+          onClick={() => onNavigate("collection")}
+        >
+          <Search className="size-3.5" aria-hidden="true" />
+          去找番搜索
+        </Button>
+      )}
+    </div>
+  );
+}
+
 function Watchlist({
   groups,
   openMap,
@@ -54,44 +100,6 @@ function Watchlist({
   todayIds,
   onNavigate,
 }: WatchlistProps) {
-  /** 列表态行内进度（与评分/话数等元信息同一行）：看到第 N 话 + 我的评分 */
-  function ProgressInfo({ item }: { item: UserCollection }) {
-    const eps = item.subject.eps ?? 0;
-    if (item.ep_status <= 0 && item.rate <= 0) return null;
-    return (
-      <>
-        {item.ep_status > 0 && (
-          <span>
-            看到 {item.ep_status}
-            {eps > 0 ? ` / ${eps}` : ""} 话
-          </span>
-        )}
-        {item.rate > 0 && <span>我评 {item.rate} 分</span>}
-      </>
-    );
-  }
-
-  /** 分组空态：在看/想看给「去找番搜索」引导，其余仅文案 */
-  function EmptyGroup({ type }: { type: CollectionType }) {
-    const guide = type === CollectionType.Doing || type === CollectionType.Wish;
-    return (
-      <div className="flex flex-col items-center gap-2 px-4 py-6 text-xs text-muted-foreground">
-        <span>暂无{COLLECTION_LABELS[type]}条目</span>
-        {guide && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1 text-xs"
-            onClick={() => onNavigate("collection")}
-          >
-            <Search className="size-3.5" />
-            去找番搜索
-          </Button>
-        )}
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-3">
       {COLLECTION_ORDER.map((type) => {
@@ -125,7 +133,7 @@ function Watchlist({
             onOpenChange={(o) => setOpenMap((m) => ({ ...m, [type]: o }))}
           >
             {items.length === 0 ? (
-              <EmptyGroup type={type as CollectionType} />
+              <EmptyGroup type={type as CollectionType} onNavigate={onNavigate} />
             ) : viewMode === "grid" ? (
               <div className="p-2">
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-3">
@@ -212,6 +220,8 @@ export function WatchlistPage({
 }: WatchlistPageProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
+  /** 进行中的平滑滚动取消句柄：新跳转前取消上一个，避免两段动画并发写 scrollTop 互抖 */
+  const scrollCancelRef = useRef<(() => void) | null>(null);
 
   const [keyword, setKeyword] = useState("");
   // 列表/网格视图（持久化）
@@ -239,19 +249,26 @@ export function WatchlistPage({
     qc.refetchQueries({ queryKey: ["collections"] });
   }
 
+  function smoothJump(targetTop: number) {
+    scrollCancelRef.current?.();
+    const container = scrollRef.current;
+    if (!container) return;
+    scrollCancelRef.current = smoothScrollTo(container, targetTop) ?? null;
+  }
+
   function jumpTo(type: CollectionType) {
     setOpenMap((m) => ({ ...m, [type]: true }));
     const container = scrollRef.current;
     if (!container) return;
-    setTimeout(() => {
+    window.setTimeout(() => {
       const el = document.getElementById(`collection-${type}`);
       if (!el) return;
-      smoothScrollTo(container, el.offsetTop - container.offsetTop);
+      smoothJump(el.offsetTop - container.offsetTop);
     }, 200);
   }
 
   function jumpToTop() {
-    scrollRef.current && smoothScrollTo(scrollRef.current, 0);
+    smoothJump(0);
   }
 
   return (
@@ -260,7 +277,7 @@ export function WatchlistPage({
         <>
           追番
           <span className="ml-2 text-sm font-normal text-muted-foreground">
-            {initialLoading ? "加载中..." : `共 ${totalCount} 部`}
+            {initialLoading ? "加载中…" : `共 ${totalCount} 部`}
           </span>
         </>
       }
@@ -298,7 +315,10 @@ export function WatchlistPage({
       ) : (
         <>
           {error && (
-            <div className="mb-2 flex items-center gap-2 text-sm text-destructive">
+            <div
+              role="alert"
+              className="mb-2 flex items-center gap-2 text-sm text-destructive"
+            >
               <span>{error instanceof Error ? error.message : "加载失败"}</span>
               <button
                 type="button"
@@ -333,7 +353,7 @@ export function WatchlistPage({
 /** 追番页首屏骨架：五个分组头 + 每组两行占位 */
 function WatchlistSkeleton() {
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" role="status" aria-label="追番列表加载中">
       {COLLECTION_ORDER.map((type) => (
         <div key={type}>
           <div className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2">
