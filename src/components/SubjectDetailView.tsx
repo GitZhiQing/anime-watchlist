@@ -42,7 +42,7 @@ import type {
   Subject as SubjectFull,
   SubjectType,
 } from "@/types/bgm";
-import { cn } from "@/lib/utils";
+import { cn, fmtDate } from "@/lib/utils";
 
 /**
  * 统一条目详情容器（全应用唯一的详情渲染单元）：
@@ -204,9 +204,7 @@ function MySection({
   const progressEligible =
     col.type === CollectionType.Doing || col.type === CollectionType.Done;
   const comment = col.comment?.trim() ?? "";
-  const updated = col.updated_at
-    ? new Date(col.updated_at).toLocaleDateString()
-    : "";
+  const updated = col.updated_at ? fmtDate(col.updated_at) : "";
 
   function startEdit() {
     setCommentText(comment);
@@ -243,11 +241,11 @@ function MySection({
           className="inline-flex cursor-pointer items-center gap-0.5 text-muted-foreground transition-colors hover:text-foreground disabled:cursor-default"
         >
           {privatePending ? (
-            <Loader2 className="size-3 animate-spin" />
+            <Loader2 className="size-3 animate-spin" aria-hidden="true" />
           ) : col.private ? (
-            <Lock className="size-3" />
+            <Lock className="size-3" aria-hidden="true" />
           ) : (
-            <Globe className="size-3" />
+            <Globe className="size-3" aria-hidden="true" />
           )}
           {col.private ? "私密" : "公开"}
         </button>
@@ -494,9 +492,11 @@ export function SubjectDetailView({
   if (variant === "dialog") {
     return (
       <div className="flex h-full min-h-0 flex-col">
-        {/* 固定头部：标题 + 收藏(xs) + Bangumi 链接 + 徽章 | 关闭（items-center 垂直对齐） */}
+        {/* 固定头部：标题 + 收藏(xs) + Bangumi 链接 + 徽章 | 关闭（items-center 垂直对齐）。
+            不用 heading：弹窗的可访问名称由壳（SubjectDetailDialog）的 sr-only DialogTitle
+            承担，此处再放 h2 会双标题连读，且行内按钮会污染 heading 的可访问名称 */}
         <div className="flex shrink-0 items-center gap-1.5 border-b border-border pb-2">
-          <h2 className="flex min-w-0 flex-1 items-center gap-1.5 text-base leading-none font-semibold">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 text-base leading-none font-semibold">
             <span className="min-w-0 truncate" title={title}>
               {title}
             </span>
@@ -506,11 +506,11 @@ export function SubjectDetailView({
             )}
             {typeBadge}
             {detail?.nsfw && <NSFWBadge />}
-          </h2>
+          </div>
           {showClose && (
             <DialogClose asChild>
               <Button variant="ghost" size="icon-sm" title="关闭">
-                <X className="size-4" />
+                <X className="size-4" aria-hidden="true" />
                 <span className="sr-only">关闭</span>
               </Button>
             </DialogClose>

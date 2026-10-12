@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useInViewOnce } from "@/hooks/useInViewOnce";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { episodesQueryOptions, useUserCollectionSmart } from "@/lib/queries";
-import { cn } from "@/lib/utils";
+import { cn, isFutureDate } from "@/lib/utils";
 
 export function SubjectEpisodesSection({ subjectId }: { subjectId: number }) {
   const { ref, inView } = useInViewOnce<HTMLDivElement>();
@@ -68,35 +68,24 @@ export function SubjectEpisodesSection({ subjectId }: { subjectId: number }) {
               <div className="space-y-px pt-1">
                 {episodes.map((e) => {
                   const watched = e.ep <= watchedEp;
-                  const unaired = e.airdate
-                    ? new Date(e.airdate).getTime() > Date.now()
-                    : false;
+                  const unaired = e.airdate ? isFutureDate(e.airdate) : false;
                   const title = e.name_cn || e.name || `第 ${e.ep} 话`;
                   const desc = e.desc?.trim();
                   const open = openDesc.has(e.ep);
                   return (
                     <div key={e.id} className="min-w-0">
-                      <div
-                        role={desc ? "button" : undefined}
-                        tabIndex={desc ? 0 : undefined}
-                        onClick={desc ? () => toggleDesc(e.ep) : undefined}
-                        onKeyDown={
-                          desc
-                            ? (ev) => {
-                                if (ev.key === "Enter" || ev.key === " ") {
-                                  ev.preventDefault();
-                                  toggleDesc(e.ep);
-                                }
-                              }
-                            : undefined
-                        }
+                      {/* 原生 button（有简介才可点），键盘支持/焦点环由浏览器与全局样式承担 */}
+                      <button
+                        type="button"
+                        disabled={!desc}
+                        onClick={() => toggleDesc(e.ep)}
                         title={
                           desc
                             ? `${title}${e.duration ? `（${e.duration}）` : ""}\n点击展开/收起单话简介`
                             : title
                         }
                         className={cn(
-                          "flex h-6 items-center gap-2 rounded px-1 text-xs transition-colors",
+                          "flex h-6 w-full items-center gap-2 rounded px-1 text-left text-xs transition-colors",
                           desc && "cursor-pointer hover:bg-muted/40",
                         )}
                       >
@@ -127,13 +116,14 @@ export function SubjectEpisodesSection({ subjectId }: { subjectId: number }) {
                         )}
                         {desc && (
                           <ChevronDown
+                            aria-hidden="true"
                             className={cn(
                               "size-3 shrink-0 text-muted-foreground transition-transform",
                               !open && "-rotate-90",
                             )}
                           />
                         )}
-                      </div>
+                      </button>
                       {desc && open && (
                         <p className="mt-0.5 mb-1 border-l-2 border-border pl-2 pr-1 text-[10px] leading-relaxed whitespace-pre-line text-muted-foreground line-clamp-8">
                           {desc}

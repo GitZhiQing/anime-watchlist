@@ -1,9 +1,10 @@
-import { Check, ChevronDown, ExternalLink, Loader2, Plus, RefreshCw } from "lucide-react";
+import { ChevronDown, ExternalLink, Loader2, Plus, RefreshCw } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
@@ -42,7 +43,11 @@ export function CollectAction({ subjectId, subject, size = "sm" }: CollectAction
   );
   const setMut = useSetCollection();
   const patchMut = usePatchCollection();
-  const busy = setMut.isPending || patchMut.isPending;
+  // 仅当 pending 的就是本条目时才禁用本按钮：否则一处收藏操作会把页面上
+  // 所有 CollectAction 连带禁用（与 ProgressEdit 的过滤口径一致）
+  const busy =
+    (setMut.isPending && setMut.variables?.subjectId === subjectId) ||
+    (patchMut.isPending && patchMut.variables?.subjectId === subjectId);
 
   const current = data ? (data.type as CollectionType) : null;
 
@@ -77,8 +82,8 @@ export function CollectAction({ subjectId, subject, size = "sm" }: CollectAction
 
   if (isLoading) {
     return (
-      <Button variant="ghost" size={size} disabled>
-        <Loader2 className="size-4 animate-spin" />
+      <Button variant="ghost" size={size} disabled aria-label="正在读取收藏状态">
+        <Loader2 className="size-4 animate-spin" aria-hidden="true" />
       </Button>
     );
   }
@@ -119,14 +124,13 @@ export function CollectAction({ subjectId, subject, size = "sm" }: CollectAction
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         {COLLECTION_ORDER.map((t) => (
-          <DropdownMenuItem key={t} onClick={() => handleSelect(t)}>
-            <Check
-              className={
-                current === t ? "size-3.5 opacity-100" : "size-3.5 opacity-0"
-              }
-            />
+          <DropdownMenuCheckboxItem
+            key={t}
+            checked={current === t}
+            onSelect={() => handleSelect(t)}
+          >
             {COLLECTION_LABELS[t]}
-          </DropdownMenuItem>
+          </DropdownMenuCheckboxItem>
         ))}
         {/* 上游无取消收藏端点：去网页管理（条目页右侧收藏面板）删除收藏 */}
         <DropdownMenuSeparator />

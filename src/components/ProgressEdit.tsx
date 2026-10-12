@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Loader2, Minus, Plus, Star } from "lucide-react";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -14,7 +14,7 @@ import {
 import { setEpisodeWatched, type Episode } from "@/lib/bgm";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { SubjectType } from "@/types/bgm";
-import { cn } from "@/lib/utils";
+import { cn, isFutureDate } from "@/lib/utils";
 
 /**
  * 「我的」折叠区内的评分与进度编辑，拆为两个独立组件：
@@ -54,7 +54,8 @@ export function RateStars({ subjectId, rate, currentPrivate }: RateStarsProps) {
             ? toast.success(`评分已保存：${next} 分`)
             : toast.success("已清除评分"),
         onError: (e) => {
-          setOptRate(null); // 回滚
+          // 并发守卫：仅当乐观值仍是本次提交的值时才回滚（之后又有新点击覆盖时不动）
+          setOptRate((prev) => (prev === next ? null : prev));
           toast.error("评分失败", {
             description: e instanceof Error ? e.message : String(e),
           });
@@ -100,8 +101,7 @@ function firstUnairedEp(episodes: Map<number, Episode> | undefined, max: number)
   for (let n = 1; n <= max; n++) {
     const e = episodes.get(n);
     if (!e?.airdate) continue; // 日期缺失视为已出，继续往后找
-    const d = new Date(e.airdate);
-    if (!isNaN(d.getTime()) && d.getTime() > Date.now()) return n;
+    if (isFutureDate(e.airdate)) return n;
   }
   return max + 1;
 }
@@ -149,6 +149,7 @@ function EpisodePicker({
         return Array.from({ length: max }, (_, i) => i + 1).map((n) => {
           const watched = n <= current;
           const aired = n < firstUnaired;
+          const tipNode = tip(n);
         return (
           <Tooltip key={n}>
             <TooltipTrigger asChild>
@@ -168,7 +169,7 @@ function EpisodePicker({
                 {n}
               </button>
             </TooltipTrigger>
-            {tip(n) && <TooltipContent side="top">{tip(n)}</TooltipContent>}
+            {tipNode && <TooltipContent side="top">{tipNode}</TooltipContent>}
           </Tooltip>
         );
         });
@@ -210,8 +211,9 @@ function NumberStepper({
         disabled={busy}
         onClick={() => onCommit(value - 1)}
         title={decTitle}
+        aria-label={decTitle}
       >
-        <Minus className="size-3" />
+        <Minus className="size-3" aria-hidden="true" />
       </Button>
       <Input
         type="number"
@@ -238,8 +240,9 @@ function NumberStepper({
         disabled={busy}
         onClick={() => onCommit(value + 1)}
         title={incTitle}
+        aria-label={incTitle}
       >
-        <Plus className="size-3" />
+        <Plus className="size-3" aria-hidden="true" />
       </Button>
     </ButtonGroup>
   );
@@ -276,13 +279,18 @@ export function ProgressRows({
   const username = user?.username;
   const mut = usePatchCollection();
   const [epBusy, setEpBusy] = useState(false);
+  /** 逐集标记的进行度文案（如 "3/25"），完成后清除 */
+  const [epProgress, setEpProgress] = useState<string | null>(null);
 
   // 剧集信息（悬浮提示用）：动画类且已知总话数时懒加载，与进度标记共用缓存
   const { data: episodes } = useQuery({
     ...episodesQueryOptions(subjectId),
     enabled: subjectType !== SubjectType.Book && totalEps > 0,
   });
-  const episodeByEp = episodes ? new Map(episodes.map((e) => [e.ep, e])) : undefined;
+  const episodeByEp = useMemo(
+    () => (episodes ? new Map(episodes.map((e) => [e.ep, e])) : undefined),
+    [episodes],
+  );
 
   // 乐观覆盖值：null 表示跟随 props
   const [optEp, setOptEp] = useState<number | null>(null);
@@ -325,7 +333,8 @@ export function ProgressRows({
       {
         onSuccess: () => toast.success(`进度已更新：看到第 ${target} 话`),
         onError: (e) => {
-          setOptEp(null); // 回滚
+          // 并发守卫：仅当乐观值仍是本次提交的值时才回滚
+          setOptEp((prev) => (prev === target ? null : prev));
           failToast("更新进度失败", e);
         },
       },
@@ -348,10 +357,17 @@ export function ProgressRows({
         target > shownEp
           ? [shownEp + 1, target, true]
           : [target + 1, shownEp, false];
+      const rangeTotal = to - from + 1;
+      let done = 0;
       for (let n = from; n <= to; n++) {
         const id = idByEp.get(n);
         if (id === undefined) continue; // 剧集列表缺失该话（SP 等）则跳过
         await setEpisodeWatched(subjectId, id, watched);
+        done += 1;
+        // 范围大时给出进行度（节流到每 5 话，避免每步一次重渲染）
+        if (rangeTotal > 8 && (done % 5 === 0 || done === rangeTotal)) {
+          setEpProgress(`${done}/${rangeTotal}`);
+        }
       }
       if (username) {
         patchCachedCollections(qc, username, subjectId, { ep_status: target });
@@ -366,10 +382,12 @@ export function ProgressRows({
       }
       toast.success(`进度已更新：看到第 ${target} 话`);
     } catch (e) {
-      setOptEp(null); // 回滚
+      // 并发守卫：仅当乐观值仍是本次提交的值时才回滚
+      setOptEp((prev) => (prev === target ? null : prev));
       failToast("更新进度失败", e);
     } finally {
       setEpBusy(false);
+      setEpProgress(null);
     }
   }
 
@@ -391,7 +409,8 @@ export function ProgressRows({
       {
         onSuccess: () => toast.success(`卷进度已更新：${target} 卷`),
         onError: (e) => {
-          setOptVol(null); // 回滚
+          // 并发守卫：仅当乐观值仍是本次提交的值时才回滚
+          setOptVol((prev) => (prev === target ? null : prev));
           failToast("更新卷进度失败", e);
         },
       },
@@ -403,7 +422,12 @@ export function ProgressRows({
   /** 话数组：非书籍且总话数已知 → 逐集按钮；否则（含书籍）→ 与卷数同款步进器 */
   const epGroup = (
     <div className="flex flex-wrap items-center gap-2">
-      {epPending && <Loader2 className="size-3 animate-spin" />}
+      {epPending && <Loader2 className="size-3 animate-spin" aria-hidden="true" />}
+      {epPending && epProgress && (
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {epProgress}
+        </span>
+      )}
       {!isBook && totalEps > 0 ? (
         <EpisodePicker
           max={totalEps}

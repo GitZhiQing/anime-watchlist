@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { ChevronRight, Star } from "lucide-react";
 import {
   Collapsible,
@@ -15,9 +15,9 @@ import { SubjectDetailView, NSFWBadge } from "@/components/SubjectDetailView";
 import { FadeImg } from "@/components/FadeImg";
 import { BangumiLink } from "@/components/BangumiLink";
 import { CollectAction } from "@/components/CollectAction";
-import { usePrefetchSubject } from "@/lib/queries";
+import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { coverUrl } from "@/lib/cover";
-import { cn } from "@/lib/utils";
+import { cn, isFutureDate } from "@/lib/utils";
 import type { SlimSubject } from "@/types/bgm";
 import { SubjectType, SUBJECT_LABELS, SUBJECT_BADGE_STYLES } from "@/types/bgm";
 
@@ -82,10 +82,10 @@ function MetaRow({
   if (!score && !eps && !hasDate && !extra) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground tabular-nums">
       {score && (
         <span className="inline-flex items-center gap-0.5">
-          <Star className="size-3 fill-current text-amber-500" />
+          <Star className="size-3 fill-current text-amber-500" aria-hidden="true" />
           {subject.score!.toFixed(1)}
         </span>
       )}
@@ -98,9 +98,7 @@ function MetaRow({
 
 /** 放送开始日期晚于当前时间 → 未开播角标（仅能确定这一种状态，其余不显示） */
 function AirBadge({ date }: { date?: string | null }) {
-  if (!date) return null;
-  const d = new Date(date);
-  if (isNaN(d.getTime()) || d.getTime() <= Date.now()) return null;
+  if (!date || !isFutureDate(date)) return null;
   return (
     <span className="rounded bg-sky-500/15 px-1 py-0.5 text-[10px] leading-none text-sky-500">
       未开播
@@ -123,19 +121,7 @@ export function SubjectRow({
   const tags = (subject.tags ?? []).slice(0, MAX_TAGS);
 
   // 悬停/聚焦 300ms 后预取完整详情，展开时秒开（staleTime 内重复预取零请求）
-  const prefetchSubject = usePrefetchSubject();
-  const prefetchTimer = useRef<number | undefined>(undefined);
-  function schedulePrefetch() {
-    window.clearTimeout(prefetchTimer.current);
-    prefetchTimer.current = window.setTimeout(
-      () => prefetchSubject(subject.id),
-      300,
-    );
-  }
-  function cancelPrefetch() {
-    window.clearTimeout(prefetchTimer.current);
-  }
-  useEffect(() => cancelPrefetch, []);
+  const hoverPrefetch = usePrefetchOnHover();
 
   return (
     <Collapsible
@@ -169,6 +155,7 @@ export function SubjectRow({
             <img
               src={coverZoom}
               alt={title}
+              decoding="async"
               className="max-h-[85vh] max-w-[90vw] rounded object-contain"
             />
           </DialogContent>
@@ -176,8 +163,8 @@ export function SubjectRow({
         {/* 内容列：标题行（标题可点展开 + 徽章 + Bangumi 链接）与其余信息（可点展开） */}
         <div
           className="flex min-w-0 flex-1 flex-col gap-1"
-          onMouseEnter={schedulePrefetch}
-          onMouseLeave={cancelPrefetch}
+          onMouseEnter={() => hoverPrefetch.schedule(subject.id)}
+          onMouseLeave={hoverPrefetch.cancel}
         >
           <div className="flex min-w-0 items-center gap-1.5">
             <CollapsibleTrigger asChild>

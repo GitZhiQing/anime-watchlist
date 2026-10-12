@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import type { ReactNode } from "react";
 import { SubjectDetailDialog } from "@/components/SubjectDetailDialog";
 import { NSFWBadge } from "@/components/SubjectDetailView";
 import { FadeImg } from "@/components/FadeImg";
-import { usePrefetchSubject } from "@/lib/queries";
+import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { coverUrl } from "@/lib/cover";
 import { cn } from "@/lib/utils";
 import type { SlimSubject } from "@/types/bgm";
@@ -29,24 +29,15 @@ export function SubjectGridCard({ subject, caption, todayAiring, className }: Su
   // 卡片 ≥112px 宽铺满，200 档在高 DPI 下偏糊，取 400 档（与 v0 common 同 URL）
   const cover = coverUrl(s.images, 400);
 
-  const prefetchSubject = usePrefetchSubject();
-  const prefetchTimer = useRef<number | undefined>(undefined);
-  function schedulePrefetch() {
-    window.clearTimeout(prefetchTimer.current);
-    prefetchTimer.current = window.setTimeout(() => prefetchSubject(s.id), 300);
-  }
-  function cancelPrefetch() {
-    window.clearTimeout(prefetchTimer.current);
-  }
-  useEffect(() => cancelPrefetch, []);
+  const hoverPrefetch = usePrefetchOnHover();
 
   return (
     <>
       <button
         type="button"
         onClick={() => setOpen(true)}
-        onMouseEnter={schedulePrefetch}
-        onMouseLeave={cancelPrefetch}
+        onMouseEnter={() => hoverPrefetch.schedule(s.id)}
+        onMouseLeave={hoverPrefetch.cancel}
         className={cn("group cursor-pointer text-left", className)}
         title={title}
       >
@@ -57,8 +48,10 @@ export function SubjectGridCard({ subject, caption, todayAiring, className }: Su
               alt={title}
               loading="lazy"
               className={cn(
-                // contain：音乐方形/三次元横版等非竖版封面完整显示（上下浅色留白），不裁切
-                "h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.04]",
+                // contain：音乐方形/三次元横版等非竖版封面完整显示（上下浅色留白），不裁切。
+                // NSFW 卡不参与 hover 放大：模糊边缘会随 scale 透出
+                "h-full w-full object-contain transition-transform duration-300",
+                !s.nsfw && "group-hover:scale-[1.04]",
                 s.nsfw && "blur-md", // NSFW 封面模糊，点击详情查看
               )}
             />

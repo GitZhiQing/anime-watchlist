@@ -20,7 +20,8 @@ const IMG_BLOCK = /\[img\]([\s\S]*?)\[\/img\]/gi;
 const URL_TAG = /\[url=(https?:\/\/[^\]\s]+)\]([\s\S]*?)\[\/url\]/gi;
 /** 其余 BBCode 标记（b/i/u/s/size/color/font/quote/hide/code 等），只留内容 */
 const OTHER_BBCODE = /\[\/?(?:b|i|u|s|size|color|font|align|left|center|right|quote|hide|code|list|metadata|thumb)[^\]]*\]/gi;
-const BARE_URL = /(https?:\/\/[^\s<>"')\]]+)/g;
+/** 裸链接：排除集含全角标点（中文简介里链接后常跟句号/逗号，不能吞进 URL） */
+const BARE_URL = /(https?:\/\/[^\s<>"')\]。，、；：！？》〉』」）]+)/g;
 
 /** 超过该长度（或段落数过多）视为长简介，折叠展示 */
 const COLLAPSE_CHARS = 260;
