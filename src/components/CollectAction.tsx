@@ -131,6 +131,7 @@ export function CollectAction({ subjectId, subject, size = "sm" }: CollectAction
         {/* 上游无取消收藏端点：去网页管理（条目页右侧收藏面板）删除收藏 */}
         <DropdownMenuSeparator />
         <DropdownMenuItem
+          title="在 Bangumi 网页管理/删除收藏"
           onClick={() =>
             void openUrl(`https://bangumi.tv/subject/${subjectId}`).catch(
               (e) =>
@@ -141,7 +142,7 @@ export function CollectAction({ subjectId, subject, size = "sm" }: CollectAction
           }
         >
           <ExternalLink className="size-3.5 opacity-0" />
-          到网页管理收藏
+          网页管理
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
