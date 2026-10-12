@@ -189,8 +189,7 @@ function CharactersSection({
               casts: ch.cast,
             });
           return (
-            // 固定高度的文本槽位（名 2 行/署名 1 行/CV 1 行，缺省占位）：
-            // 保证横向滚动条内所有卡片同尺寸，不随内容行数参差
+            // 自然堆叠布局（弹窗才是定尺寸的载体）：图片 + 名字（1~2 行）+ 一行元信息（身份 · CV）
             <div
               key={ch.id}
               className="flex w-20 shrink-0 flex-col items-center gap-0.5 text-center"
@@ -222,43 +221,49 @@ function CharactersSection({
               <button
                 type="button"
                 onClick={open}
-                className="line-clamp-2 flex h-8 w-full cursor-pointer flex-col items-center text-xs leading-tight underline-offset-2 hover:underline"
+                className="line-clamp-2 w-full cursor-pointer text-xs leading-tight underline-offset-2 hover:underline"
                 title={`查看角色：${ch.name}`}
               >
                 {ch.name}
               </button>
-              <span className="h-4 w-full truncate text-[10px] leading-4 text-muted-foreground/80">
-                {subtitle || "\u00A0"}
-              </span>
-              <span className="h-4 w-full overflow-hidden text-[10px] leading-4 whitespace-nowrap">
-                {cvs.length > 0
-                  ? cvs.slice(0, 2).map((cv, i) => (
-                      <button
-                        key={`${cv.id}-${i}`}
-                        type="button"
-                        className="cursor-pointer text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                        title={`查看声优：${cv.name}${
-                          cvs.length > 2 ? `（共 ${cvs.length} 位）` : ""
-                        }`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (cv.id)
-                            onOpenPerson({
-                              kind: "person",
-                              id: cv.id,
-                              name: cv.name,
-                              images: cv.images,
-                            });
-                        }}
-                      >
-                        {i > 0 && " / "}CV {cv.name}
-                      </button>
-                    ))
-                  : "\u00A0"}
-                {cvs.length > 2 && (
-                  <span className="text-muted-foreground"> 等 {cvs.length} 位</span>
-                )}
-              </span>
+              {(subtitle || cvs.length > 0) && (
+                <span className="w-full truncate text-[10px] leading-tight whitespace-nowrap">
+                  {subtitle && (
+                    <span className="text-muted-foreground/80">
+                      {subtitle}
+                      {cvs.length > 0 && " · "}
+                    </span>
+                  )}
+                  {cvs.slice(0, 2).map((cv, i) => (
+                    <button
+                      key={`${cv.id}-${i}`}
+                      type="button"
+                      className="cursor-pointer text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                      title={`查看声优：${cv.name}${
+                        cvs.length > 2 ? `（共 ${cvs.length} 位）` : ""
+                      }`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (cv.id)
+                          onOpenPerson({
+                            kind: "person",
+                            id: cv.id,
+                            name: cv.name,
+                            images: cv.images,
+                          });
+                      }}
+                    >
+                      {i > 0 && " / "}CV {cv.name}
+                    </button>
+                  ))}
+                  {cvs.length > 2 && (
+                    <span className="text-muted-foreground">
+                      {" "}
+                      等 {cvs.length} 位
+                    </span>
+                  )}
+                </span>
+              )}
             </div>
           );
         })}
@@ -317,10 +322,12 @@ function P1SubjectCard({
     >
       <div className="relative aspect-[5/7] w-full overflow-hidden rounded-md border border-border bg-muted/30 transition-colors group-hover:border-primary/40">
         {img ? (
+          // contain 而非 cover：横版封面完整显示为框内小横图（上下浅色留白），
+          // 不再被裁切成竖图；竖版海报比例接近 5:7 基本满框
           <FadeImg
             src={img}
             alt={title}
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.04]"
+            className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.04]"
           />
         ) : (
           <span className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground">

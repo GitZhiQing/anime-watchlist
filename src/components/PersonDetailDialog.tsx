@@ -1,7 +1,7 @@
 // 角色 / 声优（人物）详情弹窗：p1 私有端点 /p1/characters/{id}、/p1/persons/{id}。
-// 端点形状未实测（仅上游 p1.yaml 登记），加载前先用入口处已知的名/图占位，
-// 拿到详情后宽松展示（缺失字段降级）；角色弹窗内的 CV 列表来自当前条目数据，
-// 点击 CV 名可再开一层声优弹窗（递归复用本组件）。
+// 固定宽高（max-w-lg × 70vh）：头部（头像 + 名字 + 职业）固定，主体（声优 + 简介）超出滚动——
+// 角色与声优弹窗尺寸一致，不随内容长短变化。角色弹窗内的 CV 列表来自当前条目数据，
+// 点击 CV 名可再开一层声优弹窗（递归复用本组件，尺寸同固定）。
 import { useEffect, useState } from "react";
 import { RotateCw } from "lucide-react";
 import {
@@ -26,6 +26,20 @@ export interface PersonDialogTarget {
   /** 角色弹窗：该角色在当前条目的 CV 列表（点击 CV 名打开声优弹窗） */
   casts?: P1Character["cast"];
 }
+
+/** 人物职业英文 → 中文（2026-10-12 实测 career 为英文词，如 seiyu/artist） */
+const CAREER_ZH: Record<string, string> = {
+  seiyu: "声优",
+  artist: "艺人",
+  producer: "制作人",
+  mangaka: "漫画家",
+  writer: "作者",
+  novelist: "小说家",
+  illustrator: "插画家",
+  actor: "演员",
+  composer: "作曲",
+  lyricist: "作词",
+};
 
 export function PersonDetailDialog({
   target,
@@ -63,22 +77,20 @@ export function PersonDetailDialog({
         }
       }}
     >
-      {/* 限高 + 内滚动：简介/CV 列表过长时弹窗不超出视口 */}
-      <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto">
+      {/* 固定宽高：头部恒定可见，主体超高时内部滚动 */}
+      <DialogContent className="flex h-[70vh] w-full max-w-lg flex-col gap-0 overflow-hidden p-0">
         <DialogTitle className="sr-only">{name || "详情"}</DialogTitle>
         {q.isPending ? (
-          <div className="flex gap-3">
-            <Skeleton className="aspect-[3/4] w-20 shrink-0 rounded-md" />
+          <div className="flex gap-3 p-4 text-left">
+            <Skeleton className="aspect-[3/4] w-16 shrink-0 rounded-md" />
             <div className="flex-1 space-y-2 py-1">
               <Skeleton className="h-4 w-1/2" />
               <Skeleton className="h-3 w-2/3" />
-              <Skeleton className="h-3 w-full" />
-              <Skeleton className="h-3 w-4/5" />
-              <Skeleton className="h-3 w-3/5" />
+              <Skeleton className="h-3 w-1/3" />
             </div>
           </div>
         ) : q.isError ? (
-          <div className="flex items-center justify-center gap-2 py-6 text-sm text-destructive">
+          <div className="flex flex-1 items-center justify-center gap-2 text-sm text-destructive">
             <span>详情加载失败</span>
             <Button
               variant="ghost"
@@ -90,45 +102,43 @@ export function PersonDetailDialog({
             </Button>
           </div>
         ) : (
-          <div className="flex gap-3 text-left">
-            <div className="w-20 shrink-0">
-              {img ? (
-                <FadeImg
-                  src={img}
-                  alt={name}
-                  className="aspect-[3/4] w-full rounded-md bg-muted/50 object-cover object-top"
-                />
-              ) : (
-                <div className="aspect-[3/4] w-full rounded-md bg-muted/60" />
-              )}
-            </div>
-            <div className="min-w-0 flex-1 space-y-1.5">
-              <p className="text-base leading-tight font-semibold">{name}</p>
-              {original && original !== name && (
-                <p className="text-xs text-muted-foreground">{original}</p>
-              )}
-              {!!detail?.career?.length && (
-                <div className="flex flex-wrap gap-1">
-                  {detail.career.slice(0, 4).map((c) => (
-                    <span
-                      key={c}
-                      className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
-                    >
-                      {c}
-                    </span>
-                  ))}
-                </div>
-              )}
-              <p
-                className={cn(
-                  "text-xs leading-relaxed whitespace-pre-line",
-                  !summary && "text-muted-foreground",
+          <>
+            {/* 固定头部：头像 + 名字 + 职业 */}
+            <div className="flex shrink-0 gap-3 border-b border-border px-4 pt-4 pb-3 text-left">
+              <div className="w-16 shrink-0">
+                {img ? (
+                  <FadeImg
+                    src={img}
+                    alt={name}
+                    className="aspect-[3/4] w-full rounded-md bg-muted/50 object-cover object-top"
+                  />
+                ) : (
+                  <div className="aspect-[3/4] w-full rounded-md bg-muted/60" />
                 )}
-              >
-                {summary || "暂无简介"}
-              </p>
+              </div>
+              <div className="min-w-0 flex-1 space-y-1 py-0.5 pr-6">
+                <p className="text-base leading-tight font-semibold">{name}</p>
+                {original && original !== name && (
+                  <p className="text-xs text-muted-foreground">{original}</p>
+                )}
+                {!!detail?.career?.length && (
+                  <div className="flex flex-wrap gap-1 pt-0.5">
+                    {detail.career.slice(0, 4).map((c) => (
+                      <span
+                        key={c}
+                        className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                      >
+                        {CAREER_ZH[c] ?? c}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            {/* 滚动主体：角色弹窗的声优列表紧贴头部（简介可长，放其后） */}
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 text-left">
               {target?.kind === "character" && !!target.casts?.length && (
-                <div className="space-y-1 pt-1">
+                <div className="space-y-1">
                   <p className="text-xs text-muted-foreground">声优</p>
                   <div className="flex flex-wrap gap-x-3 gap-y-1">
                     {target.casts.map((cv, i) => (
@@ -153,8 +163,16 @@ export function PersonDetailDialog({
                   </div>
                 </div>
               )}
+              <p
+                className={cn(
+                  "text-xs leading-relaxed whitespace-pre-line",
+                  !summary && "text-muted-foreground",
+                )}
+              >
+                {summary || "暂无简介"}
+              </p>
             </div>
-          </div>
+          </>
         )}
         {/* 嵌套声优弹窗（角色 → CV） */}
         <PersonDetailDialog
