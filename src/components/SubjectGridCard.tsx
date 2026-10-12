@@ -57,7 +57,8 @@ export function SubjectGridCard({ subject, caption, todayAiring, className }: Su
               alt={title}
               loading="lazy"
               className={cn(
-                "h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.04]",
+                // contain：音乐方形/三次元横版等非竖版封面完整显示（上下浅色留白），不裁切
+                "h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.04]",
                 s.nsfw && "blur-md", // NSFW 封面模糊，点击详情查看
               )}
             />

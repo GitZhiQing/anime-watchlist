@@ -141,7 +141,7 @@ export function CollectAction({ subjectId, subject, size = "sm" }: CollectAction
             )
           }
         >
-          <ExternalLink className="size-3.5 opacity-0" />
+          <ExternalLink className="size-3.5" />
           网页管理
         </DropdownMenuItem>
       </DropdownMenuContent>
