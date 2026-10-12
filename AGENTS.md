@@ -125,6 +125,7 @@ CI 在 `windows-latest`：安装依赖 → `npm run tauri build` → 打包便�
 ## 注意
 
 - **提交纪律（用户明确要求）**：**严禁改一次提交一次、不得主动提交**——只有用户明确说「提交」时才执行 git commit；视觉/UI 迭代先与用户确认定稿，多个小改攒批合并提交，避免历史冗余（2026-10-12 曾因此重整过 6 个提交）
+- **提交信息规范（用户明确要求，2026-10-13 v2.0.0 反馈定稿）**：首行 `<emoji> <type>: <主题>` 保持简短（约 30 字内讲清一句话主题，type 用 feat/fix/refactor/style/docs/chore/perf）；需要细节时放 **body** 以 `- ` 短句列点，**勿把全部细节堆进首行单行**——v2.0.0 之前的单行超长 commit 与自动生成的 release 全量罗列均被用户点名糟糕，勿再犯。发版后 CI 自动生成的 release notes 是逐条 commit 罗列，**必须随后用 `gh release edit <tag> --notes-file <file>` 覆盖为手工精简版**：开头一句定位 + 「新功能 / 修复与改进」两节列点（用户视角，只列可感知变化）+ 末尾 compare 链接，参考 v2.0.0 现版
 - **端口**：开发用 3000（HMR 3001），host 固定 127.0.0.1。本机 Windows 保留 1390-1489 等段，不能用那些段
 - **204/空 body**：`bgmRequest` 统一用 `res.text()` 读取，空则返回 undefined，避免 JSON 解析报错
 - **SlimSubject vs Subject**：列表接口返回 SlimSubject（`short_summary`/顶层 `score`），完整 Subject 仅 `GET /v0/subjects/{id}` 有 `summary`/`rating.score`/`total_episodes`
