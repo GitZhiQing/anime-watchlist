@@ -11,17 +11,18 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FadeImg } from "@/components/FadeImg";
+import { ZoomableImage } from "@/components/ZoomableImage";
 import { useCharacterDetail, usePersonDetail } from "@/lib/queries";
 import { coverUrl } from "@/lib/cover";
 import { cn } from "@/lib/utils";
 import type { P1Character, P1PersonDetail, SubjectImages } from "@/types/bgm";
 
-/** 弹窗目标：kind 区分角色/声优；name/images 为入口已知值（加载前占位） */
+/** 弹窗目标：kind 区分角色/声优；id/name/images 为入口已知值（加载前占位），
+ *  p1 数据可能缺失——id 为 null 时两个详情查询均禁用（弹窗内显示加载占位外的空态） */
 export interface PersonDialogTarget {
   kind: "character" | "person";
-  id: number;
-  name: string;
+  id: number | null;
+  name?: string;
   images?: SubjectImages | null;
   /** 角色弹窗：该角色在当前条目的 CV 列表（点击 CV 名打开声优弹窗） */
   casts?: P1Character["cast"];
@@ -64,7 +65,10 @@ export function PersonDetailDialog({
   const detail: P1PersonDetail | undefined = q.data;
   const original = detail?.name || target?.name || "";
   const name = detail?.nameCN || original;
-  const img = coverUrl((detail?.images ?? target?.images) ?? undefined, 400);
+  const imgs = detail?.images ?? target?.images;
+  // large 档：64px 容器在高 DPI 下 medium 偏糊；lain 头像统一走 cover:// 协议
+  const img = coverUrl(imgs ?? undefined, 400);
+  const imgZoom = coverUrl(imgs ?? undefined, 800) ?? img;
   const summary = detail?.summary?.trim();
 
   return (
@@ -103,14 +107,16 @@ export function PersonDetailDialog({
           </div>
         ) : (
           <>
-            {/* 固定头部：头像 + 名字 + 职业 */}
+            {/* 固定头部：头像（点击放大查看）+ 名字 + 职业 */}
             <div className="flex shrink-0 gap-3 border-b border-border px-4 pt-4 pb-3 text-left">
               <div className="w-16 shrink-0">
                 {img ? (
-                  <FadeImg
+                  <ZoomableImage
                     src={img}
-                    alt={name}
-                    className="aspect-[3/4] w-full rounded-md bg-muted/50 object-cover object-top"
+                    zoomSrc={imgZoom}
+                    alt={name || "人物"}
+                    title={`查看大图${name ? `：${name}` : ""}`}
+                    className="aspect-[3/4] w-full rounded-md bg-muted/50 object-cover object-top hover:opacity-80"
                   />
                 ) : (
                   <div className="aspect-[3/4] w-full rounded-md bg-muted/60" />
@@ -131,6 +137,11 @@ export function PersonDetailDialog({
                         {CAREER_ZH[c] ?? c}
                       </span>
                     ))}
+                    {detail.career.length > 4 && (
+                      <span className="px-0.5 py-0.5 text-[10px] text-muted-foreground">
+                        +{detail.career.length - 4}
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
@@ -143,7 +154,7 @@ export function PersonDetailDialog({
                   <div className="flex flex-wrap gap-x-3 gap-y-1">
                     {target.casts.map((cv, i) => (
                       <button
-                        key={`${cv.id}-${i}`}
+                        key={cv.id ?? i}
                         type="button"
                         className="cursor-pointer text-xs text-foreground/80 underline-offset-2 hover:text-foreground hover:underline"
                         onClick={() =>
@@ -156,7 +167,7 @@ export function PersonDetailDialog({
                           })
                         }
                       >
-                        {cv.name}
+                        {cv.name ?? "未知"}
                         {cv.lang ? `（${cv.lang}）` : ""}
                       </button>
                     ))}

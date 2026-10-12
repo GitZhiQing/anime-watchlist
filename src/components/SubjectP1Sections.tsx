@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import {
-  usePrefetchSubject,
   useSubjectCharacters,
   useSubjectRelations,
   useSubjectRecs,
@@ -13,7 +12,9 @@ import {
   type PersonDialogTarget,
 } from "@/components/PersonDetailDialog";
 import { FadeImg } from "@/components/FadeImg";
+import { ZoomableImage } from "@/components/ZoomableImage";
 import { useInViewOnce } from "@/hooks/useInViewOnce";
+import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type {
@@ -35,8 +36,6 @@ import { SubjectType, SUBJECT_LABELS, SUBJECT_BADGE_STYLES } from "@/types/bgm";
 
 const MAX_RELATIONS = 12;
 const MAX_RECS = 8;
-/** 角色默认展示数，超出折叠为「查看全部」（客户端展开，无翻页请求） */
-const CHARACTERS_PREVIEW = 12;
 /** 角色身份徽标（p1 type 数值语义未实测确认，宽松映射） */
 const ROLE_LABELS: Record<number, string> = { 1: "主角", 2: "配角", 3: "客串" };
 
@@ -112,18 +111,11 @@ function p1SectionState(
 /** p1 卡片点击 → 应用内详情弹窗（不外跳浏览器）。悬停 300ms 预取详情，与网格卡片一致。 */
 function useP1SubjectDialog() {
   const [subject, setSubject] = useState<SlimSubject | null>(null);
-  const prefetchSubject = usePrefetchSubject();
-  const timer = useRef<number | undefined>(undefined);
-  useEffect(() => () => window.clearTimeout(timer.current), []);
+  const hoverPrefetch = usePrefetchOnHover();
   return {
     open: (s: SlimSubject | undefined) => setSubject(s ?? null),
-    schedulePrefetch(id: number) {
-      window.clearTimeout(timer.current);
-      timer.current = window.setTimeout(() => prefetchSubject(id), 300);
-    },
-    cancelPrefetch() {
-      window.clearTimeout(timer.current);
-    },
+    schedulePrefetch: hoverPrefetch.schedule,
+    cancelPrefetch: hoverPrefetch.cancel,
     element: subject ? (
       <SubjectDetailDialog
         subjectId={subject.id}
@@ -160,7 +152,9 @@ function p1NavSubject(r: {
   };
 }
 
-/** 角色/CV：横向滚动头像卡。点角色图/名开角色弹窗，点 CV 名开声优弹窗；全部 CV 展示（>2 位折叠为「等N位」） */
+/** 角色/CV：横向滚动头像卡，默认渲染全部（横向滚动本身即承载任意数量，
+ *  不做折叠——竖向折叠控件控制横向列表的展开属交互语义错配）。
+ *  点角色图/名开角色弹窗，点 CV 名开声优弹窗；全部 CV 展示（>2 位折叠为「等N位」） */
 function CharactersSection({
   data,
   onOpenCharacter,
@@ -170,20 +164,20 @@ function CharactersSection({
   onOpenCharacter: (t: PersonDialogTarget) => void;
   onOpenPerson: (t: PersonDialogTarget) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const list = expanded ? data : data.slice(0, CHARACTERS_PREVIEW);
   return (
     <div className="space-y-1.5">
       <div className="scrollbar-thin flex gap-2 overflow-x-auto pb-1">
-        {list.map((ch) => {
+        {data.map((ch, idx) => {
           const img = coverUrl(ch.images, 200);
           const role = ch.type !== undefined ? ROLE_LABELS[ch.type] : undefined;
           const cvs = ch.cast ?? [];
           const subtitle = [role, ch.characterName].filter(Boolean).join(" · ");
+          // p1 数据可能缺名：回退 #id，避免 UI 出现 "undefined" 文本
+          const chName = ch.name || (ch.id != null ? `#${ch.id}` : "");
           const open = () =>
             onOpenCharacter({
               kind: "character",
-              id: ch.id,
+              id: ch.id ?? null,
               name: ch.name,
               images: ch.images,
               casts: ch.cast,
@@ -191,43 +185,39 @@ function CharactersSection({
           return (
             // 自然堆叠布局（弹窗才是定尺寸的载体）：图片 + 名字（1~2 行）+ 一行元信息（身份 · CV）
             <div
-              key={ch.id}
+              key={ch.id ?? idx}
               className="flex w-20 shrink-0 flex-col items-center gap-0.5 text-center"
               title={
                 cvs.length > 0
-                  ? `${ch.name}\nCV：${cvs.map((c) => c.name).join(" / ")}`
-                  : ch.name
+                  ? `${chName}\nCV：${cvs.map((c) => c.name ?? "").join(" / ")}`
+                  : chName
               }
             >
-              <button
-                type="button"
-                onClick={open}
-                className="cursor-pointer"
-                title={`查看角色：${ch.name}`}
-              >
-                {img ? (
-                  <img
-                    src={img}
-                    alt={ch.name}
-                    loading="lazy"
-                    decoding="async"
-                    // 3:4 竖版固定框：竖长图裁顶部（保留脸部），横宽图垂直放满、水平居中
-                    className="aspect-[3/4] w-16 rounded-md object-cover object-top transition-opacity hover:opacity-80"
-                  />
-                ) : (
-                  <div className="aspect-[3/4] w-16 rounded-md bg-muted/60" />
-                )}
-              </button>
+              {/* 点图看大图、点名开角色弹窗（职责分离：图=视觉，文字=详情） */}
+              {img ? (
+                <ZoomableImage
+                  src={img}
+                  zoomSrc={coverUrl(ch.images, 800) ?? img}
+                  alt={chName}
+                  title={`查看大图：${chName}`}
+                  // 3:4 竖版固定框：竖长图裁顶部（保留脸部），横宽图垂直放满、水平居中
+                  className="aspect-[3/4] w-16 rounded-md object-cover object-top hover:opacity-80"
+                />
+              ) : (
+                <div className="aspect-[3/4] w-16 rounded-md bg-muted/60" />
+              )}
               <button
                 type="button"
                 onClick={open}
                 className="line-clamp-2 w-full cursor-pointer text-xs leading-tight underline-offset-2 hover:underline"
-                title={`查看角色：${ch.name}`}
+                title={`查看角色：${chName}`}
               >
-                {ch.name}
+                {chName}
               </button>
               {(subtitle || cvs.length > 0) && (
-                <span className="w-full truncate text-[10px] leading-tight whitespace-nowrap">
+                /* 不在外层截断（truncate 会把行内按钮裁成「视觉消失但键盘可 Tab 到」
+                   的焦点错位）；按钮自身 inline-block + truncate，可见宽即点击宽 */
+                <span className="w-full text-[10px] leading-tight">
                   {subtitle && (
                     <span className="text-muted-foreground/80">
                       {subtitle}
@@ -236,10 +226,10 @@ function CharactersSection({
                   )}
                   {cvs.slice(0, 2).map((cv, i) => (
                     <button
-                      key={`${cv.id}-${i}`}
+                      key={cv.id ?? i}
                       type="button"
-                      className="cursor-pointer text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                      title={`查看声优：${cv.name}${
+                      className="inline-block max-w-full cursor-pointer truncate align-bottom text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                      title={`查看声优：${cv.name ?? "未知"}${
                         cvs.length > 2 ? `（共 ${cvs.length} 位）` : ""
                       }`}
                       onClick={(e) => {
@@ -253,7 +243,7 @@ function CharactersSection({
                           });
                       }}
                     >
-                      {i > 0 && " / "}CV {cv.name}
+                      {i > 0 && " / "}CV {cv.name ?? "未知"}
                     </button>
                   ))}
                   {cvs.length > 2 && (
@@ -268,21 +258,6 @@ function CharactersSection({
           );
         })}
       </div>
-      {data.length > CHARACTERS_PREVIEW && (
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="flex cursor-pointer items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ChevronDown
-            className={cn(
-              "size-3.5 transition-transform",
-              !expanded && "-rotate-90",
-            )}
-          />
-          {expanded ? "收起" : `查看全部 ${data.length} 位`}
-        </button>
-      )}
     </div>
   );
 }
@@ -369,7 +344,38 @@ function P1SubjectCard({
   );
 }
 
-/** 关联条目：海报卡片网格（relation 显示为封面右上角标），点击打开应用内详情弹窗 */
+/** 折叠展开条：纵向网格内容（关联条目/相关推荐）的「查看全部 N 条」客户端展开，无翻页请求 */
+function ExpandToggle({
+  expanded,
+  count,
+  onToggle,
+  noun,
+}: {
+  expanded: boolean;
+  count: number;
+  onToggle: () => void;
+  noun: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="flex cursor-pointer items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
+    >
+      <ChevronDown
+        aria-hidden="true"
+        className={cn(
+          "size-3.5 transition-transform",
+          !expanded && "-rotate-90",
+        )}
+      />
+      {expanded ? "收起" : `查看全部 ${count} ${noun}`}
+    </button>
+  );
+}
+
+/** 关联条目：海报卡片网格（relation 显示为封面右上角标），点击打开应用内详情弹窗。
+ *  默认截取前 MAX_RELATIONS 条，超出可展开全部（纵向网格内容长，折叠有意义）。 */
 function RelationsSection({
   data,
   nav,
@@ -377,17 +383,29 @@ function RelationsSection({
   data: P1Relation[];
   nav: P1SubjectNav;
 }) {
-  const list = data.slice(0, MAX_RELATIONS);
+  const [expanded, setExpanded] = useState(false);
+  const list = expanded ? data : data.slice(0, MAX_RELATIONS);
   return (
-    <div className={CARD_GRID}>
-      {list.map((r) => (
-        <P1SubjectCard key={r.id} nav={nav} r={r} badge={r.relation} />
-      ))}
+    <div className="space-y-1.5">
+      <div className={CARD_GRID}>
+        {list.map((r, i) => (
+          <P1SubjectCard key={r.id ?? i} nav={nav} r={r} badge={r.relation} />
+        ))}
+      </div>
+      {data.length > MAX_RELATIONS && (
+        <ExpandToggle
+          expanded={expanded}
+          count={data.length}
+          noun="条"
+          onToggle={() => setExpanded((v) => !v)}
+        />
+      )}
     </div>
   );
 }
 
-/** 相关推荐：海报卡片网格（评分显示为海报右上角标），点击打开应用内详情弹窗 */
+/** 相关推荐：海报卡片网格（评分显示为海报右上角标），点击打开应用内详情弹窗。
+ *  默认截取前 MAX_RECS 条，超出可展开全部（纵向网格内容长，折叠有意义）。 */
 function RecsSection({
   data,
   nav,
@@ -395,12 +413,23 @@ function RecsSection({
   data: P1RecItem[];
   nav: P1SubjectNav;
 }) {
-  const list = data.slice(0, MAX_RECS);
+  const [expanded, setExpanded] = useState(false);
+  const list = expanded ? data : data.slice(0, MAX_RECS);
   return (
-    <div className={CARD_GRID}>
-      {list.map((r, i) => (
-        <P1SubjectCard key={i} nav={nav} r={r} />
-      ))}
+    <div className="space-y-1.5">
+      <div className={CARD_GRID}>
+        {list.map((r, i) => (
+          <P1SubjectCard key={r.id ?? i} nav={nav} r={r} />
+        ))}
+      </div>
+      {data.length > MAX_RECS && (
+        <ExpandToggle
+          expanded={expanded}
+          count={data.length}
+          noun="个"
+          onToggle={() => setExpanded((v) => !v)}
+        />
+      )}
     </div>
   );
 }
