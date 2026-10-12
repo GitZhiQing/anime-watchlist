@@ -1,5 +1,5 @@
 // 统计页：全部数据来自本地收藏缓存（computeStats 纯函数聚合，零请求）。
-// 纯 CSS 横向条形（宽度百分比），零图表库依赖。
+// 紧凑分区布局（KPI 数字行 + 迷你条 + 纵向直方图），零图表库依赖。
 import { useMemo } from "react";
 import { BarChart3, Search, Settings } from "lucide-react";
 import { PageLayout } from "@/components/layout/PageLayout";
@@ -10,54 +10,118 @@ import { cn } from "@/lib/utils";
 import type { SubjectType, UserCollection } from "@/types/bgm";
 import type { PageKey } from "@/App";
 
-/** 横向条形列表：label | 比例条 | 数值 */
-function BarList({ data }: { data: StatsBar[] }) {
-  const max = Math.max(1, ...data.map((d) => d.value));
+/** 迷你条形行：标签 | 计数 | 固定宽度短条（不铺满，避免量柱过长），行高 20px */
+function MiniBarRow({
+  label,
+  value,
+  max,
+  colorClass,
+  suffix,
+}: {
+  label: string;
+  value: number;
+  max: number;
+  colorClass?: string;
+  /** 条后的附加小字（如类型占比的百分比） */
+  suffix?: string;
+}) {
   return (
-    <div className="space-y-1.5">
-      {data.map((d) => (
-        <div key={d.label} className="flex items-center gap-2 text-xs">
-          <span
-            className="w-16 shrink-0 truncate text-muted-foreground"
-            title={d.label}
-          >
-            {d.label}
-          </span>
-          <div className="h-2.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
-            <div
-              className={cn(
-                "h-full rounded-full bg-primary transition-all",
-                d.colorClass,
-              )}
-              style={{ width: `${(d.value / max) * 100}%` }}
-            />
-          </div>
-          <span className="w-10 shrink-0 text-right tabular-nums text-muted-foreground">
-            {d.value}
-          </span>
-        </div>
-      ))}
+    <div className="flex h-5 items-center gap-2 text-xs">
+      <span className="w-12 shrink-0 truncate text-muted-foreground" title={label}>
+        {label}
+      </span>
+      <span className="w-8 shrink-0 text-right tabular-nums">{value}</span>
+      <div className="h-1.5 w-24 shrink-0 overflow-hidden rounded-full bg-muted/60">
+        <div
+          className={cn("h-full rounded-full bg-primary/80", colorClass)}
+          style={{ width: `${max > 0 ? (value / max) * 100 : 0}%` }}
+        />
+      </div>
+      {suffix && (
+        <span className="text-[10px] text-muted-foreground tabular-nums">
+          {suffix}
+        </span>
+      )}
     </div>
   );
 }
 
-function StatCard({
-  title,
-  footer,
-  children,
+/** KPI 数字块：大数字 + 标签 + 可选副行 */
+function Kpi({
+  value,
+  label,
+  sub,
+  subClass,
 }: {
-  title: string;
-  footer?: React.ReactNode;
-  children: React.ReactNode;
+  value: string;
+  label: string;
+  sub?: string;
+  subClass?: string;
 }) {
   return (
-    <section className="space-y-3 rounded-lg border border-border p-4">
-      <div className="text-sm font-medium">{title}</div>
-      {children}
-      {footer && (
-        <div className="text-xs text-muted-foreground">{footer}</div>
+    <div className="min-w-0 space-y-0.5 px-3 first:pl-0">
+      <p className="truncate text-2xl leading-none font-semibold tabular-nums">
+        {value}
+      </p>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      {sub && (
+        <p className={cn("text-[10px] text-muted-foreground", subClass)}>
+          {sub}
+        </p>
       )}
-    </section>
+    </div>
+  );
+}
+
+/** 评分纵向直方图：10 列高度 ∝ 数量，柱顶标计数、柱底标分数 */
+function RatingHistogram({ data }: { data: StatsBar[] }) {
+  const max = Math.max(1, ...data.map((d) => d.value));
+  return (
+    <div>
+      <div className="flex h-24 items-end gap-1.5">
+        {data.map((d) => (
+          <div
+            key={d.label}
+            className="flex h-full flex-1 flex-col justify-end gap-0.5"
+            title={`${d.label}：${d.value} 部`}
+          >
+            {d.value > 0 && (
+              <span className="text-center text-[10px] leading-none text-muted-foreground tabular-nums">
+                {d.value}
+              </span>
+            )}
+            <div
+              className="rounded-t-sm bg-amber-500/75"
+              style={{
+                height: `${d.value > 0 ? Math.max(8, (d.value / max) * 100) : 2}%`,
+                minHeight: 2,
+              }}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="mt-1 flex gap-1.5">
+        {data.map((d) => (
+          <span
+            key={d.label}
+            className="flex-1 text-center text-[10px] leading-none text-muted-foreground tabular-nums"
+          >
+            {d.label.replace(" 分", "")}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SectionTitle({ children, aside }: { children: React.ReactNode; aside?: React.ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between">
+      <h2 className="text-sm font-medium">{children}</h2>
+      {aside && (
+        <span className="text-xs text-muted-foreground">{aside}</span>
+      )}
+    </div>
   );
 }
 
@@ -86,7 +150,11 @@ export function StatsPage({ bySubjectType, onNavigate }: StatsPageProps) {
             </p>
           </div>
           {user ? (
-            <Button variant="outline" size="sm" onClick={() => onNavigate("collection")}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onNavigate("collection")}
+            >
               <Search className="size-4" /> 去找番
             </Button>
           ) : (
@@ -103,6 +171,9 @@ export function StatsPage({ bySubjectType, onNavigate }: StatsPageProps) {
     stats.myAvg !== null && stats.communityAvg !== null
       ? stats.myAvg - stats.communityAvg
       : null;
+  const shelfMax = Math.max(1, ...stats.shelfBars.map((b) => b.value));
+  const typeMax = Math.max(1, ...stats.typeBars.map((b) => b.value));
+  const yearMax = Math.max(1, ...stats.yearBars.map((b) => b.value));
 
   return (
     <PageLayout
@@ -115,74 +186,100 @@ export function StatsPage({ bySubjectType, onNavigate }: StatsPageProps) {
         </>
       }
     >
-      <div className="mx-auto grid max-w-3xl gap-3 sm:grid-cols-2">
-        <StatCard title="收藏夹分布">
-          <BarList data={stats.shelfBars} />
-        </StatCard>
+      <div className="mx-auto max-w-3xl divide-y divide-border">
+        {/* KPI 行：总览数字，替代原「我 vs 大众」卡片 */}
+        <div className="grid grid-cols-2 gap-y-4 pb-5 sm:grid-cols-4 sm:divide-x sm:divide-border">
+          <Kpi value={String(stats.total)} label="总收藏" />
+          <Kpi value={String(stats.doingCount)} label="在看" />
+          <Kpi
+            value={stats.myAvg !== null ? stats.myAvg.toFixed(1) : "—"}
+            label="我的均分"
+            sub={
+              stats.communityAvg !== null
+                ? `大众 ${stats.communityAvg.toFixed(1)}`
+                : undefined
+            }
+          />
+          <Kpi
+            value={rateDiff !== null ? `${rateDiff > 0 ? "+" : ""}${rateDiff.toFixed(1)}` : "—"}
+            label="比大众"
+            sub={
+              rateDiff === null
+                ? "评分后可对比"
+                : rateDiff > 0
+                  ? "口味更偏爱"
+                  : rateDiff < 0
+                    ? "打分更严格"
+                    : "与大众一致"
+            }
+            subClass={
+              rateDiff === null || rateDiff === 0
+                ? undefined
+                : rateDiff > 0
+                  ? "text-orange-500 dark:text-orange-400"
+                  : "text-sky-500 dark:text-sky-400"
+            }
+          />
+        </div>
 
-        <StatCard
-          title="类型占比"
-          footer={`共 ${stats.total} 条，动画 ${
-            stats.typeBars.find((b) => b.label === "动画")?.value ?? 0
-          } 条`}
-        >
-          <BarList data={stats.typeBars} />
-        </StatCard>
-
-        <StatCard
-          title="我的评分分布"
-          footer={
-            stats.myAvg !== null
-              ? `平均 ${stats.myAvg.toFixed(1)} 分 · 已评 ${stats.ratedCount} / ${stats.total}`
-              : "还没有评过分的收藏"
-          }
-        >
-          <BarList data={stats.rateBars} />
-        </StatCard>
-
-        <StatCard
-          title="我 vs 大众"
-          footer={
-            rateDiff !== null
-              ? rateDiff > 0
-                ? `你的均分比大众高 ${rateDiff.toFixed(1)}，口味更偏爱`
-                : rateDiff < 0
-                  ? `你的均分比大众低 ${Math.abs(rateDiff).toFixed(1)}，打分更严格`
-                  : "与大众均分一致"
-              : "评分后可对比"
-          }
-        >
-          <div className="flex items-center justify-around py-2">
-            <div className="space-y-1 text-center">
-              <p className="text-2xl font-semibold tabular-nums">
-                {stats.myAvg !== null ? stats.myAvg.toFixed(1) : "—"}
-              </p>
-              <p className="text-xs text-muted-foreground">我的均分</p>
+        {/* 构成：收藏夹 + 类型双列迷你条 */}
+        <section className="space-y-2 py-5">
+          <SectionTitle aside={`已评 ${stats.ratedCount} / ${stats.total}`}>
+            构成
+          </SectionTitle>
+          <div className="grid gap-x-10 gap-y-1 sm:grid-cols-2">
+            <div className="space-y-0.5">
+              {stats.shelfBars.map((b) => (
+                <MiniBarRow key={b.label} {...b} max={shelfMax} />
+              ))}
             </div>
-            <div className="text-xl text-muted-foreground/40">/</div>
-            <div className="space-y-1 text-center">
-              <p className="text-2xl font-semibold tabular-nums">
-                {stats.communityAvg !== null
-                  ? stats.communityAvg.toFixed(1)
-                  : "—"}
-              </p>
-              <p className="text-xs text-muted-foreground">大众均分</p>
+            <div className="space-y-0.5">
+              {stats.typeBars.map((b) => (
+                <MiniBarRow
+                  key={b.label}
+                  {...b}
+                  max={typeMax}
+                  suffix={`${Math.round((b.value / stats.total) * 100)}%`}
+                />
+              ))}
             </div>
           </div>
-        </StatCard>
+        </section>
 
-        <StatCard
-          title="开播年份分布"
-          footer="按条目开播日期统计（未定档条目不计）"
-        >
+        {/* 评分分布：纵向直方图 */}
+        <section className="space-y-2 py-5">
+          <SectionTitle
+            aside={
+              stats.myAvg !== null
+                ? `平均 ${stats.myAvg.toFixed(1)} 分`
+                : "还没有评过分的收藏"
+            }
+          >
+            我的评分分布
+          </SectionTitle>
+          <RatingHistogram data={stats.rateBars} />
+        </section>
+
+        {/* 开播年份分布：年份多时双列 */}
+        <section className="space-y-2 py-5">
+          <SectionTitle aside="按条目开播日期（未定档不计）">
+            开播年份分布
+          </SectionTitle>
           {stats.yearBars.length > 0 ? (
-            <BarList data={stats.yearBars} />
+            <div
+              className={cn(
+                "grid gap-x-10 gap-y-0.5",
+                stats.yearBars.length > 8 && "sm:grid-cols-2",
+              )}
+            >
+              {stats.yearBars.map((b) => (
+                <MiniBarRow key={b.label} {...b} max={yearMax} />
+              ))}
+            </div>
           ) : (
-            <p className="py-4 text-center text-xs text-muted-foreground">
-              暂无数据
-            </p>
+            <p className="text-xs text-muted-foreground">暂无数据</p>
           )}
-        </StatCard>
+        </section>
       </div>
     </PageLayout>
   );

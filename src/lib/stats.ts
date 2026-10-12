@@ -5,8 +5,9 @@ import {
   COLLECTION_ORDER,
   SUBJECT_LABELS,
   SUBJECT_TYPES,
+  CollectionType,
 } from "@/types/bgm";
-import type { CollectionType, SubjectType, UserCollection } from "@/types/bgm";
+import type { SubjectType, UserCollection } from "@/types/bgm";
 
 /** 单条横向条形数据；colorClass 为条的颜色类（缺省 bg-primary） */
 export interface StatsBar {
@@ -17,6 +18,9 @@ export interface StatsBar {
 
 export interface StatsResult {
   total: number;
+  /** 在看/想看数（KPI 行用） */
+  doingCount: number;
+  wishCount: number;
   /** 收藏夹分布（想看/看过/在看/搁置/抛弃） */
   shelfBars: StatsBar[];
   /** 条目类型占比（动画/书籍/…） */
@@ -112,6 +116,8 @@ export function computeStats(
 
   return {
     total: all.length,
+    doingCount: all.filter((c) => c.type === CollectionType.Doing).length,
+    wishCount: all.filter((c) => c.type === CollectionType.Wish).length,
     shelfBars,
     typeBars,
     rateBars,
