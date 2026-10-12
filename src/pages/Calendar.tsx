@@ -188,9 +188,11 @@ function calendarToGroups(data: CalendarDay[]): RenderGroup[] {
       id: day.weekday.id,
       title: (
         <>
-          <span className={cn(isToday && "text-primary")}>{day.weekday.cn}</span>
+          <span className={cn(isToday && "text-orange-500 dark:text-orange-400")}>
+            {day.weekday.cn}
+          </span>
           {isToday && (
-            <span className="ml-1.5 rounded bg-primary px-1 py-0.5 text-[10px] text-primary-foreground">
+            <span className="ml-1.5 rounded bg-orange-500 px-1 py-0.5 text-[10px] text-white">
               今天
             </span>
           )}
@@ -675,7 +677,9 @@ function SubjectGroups({ groups, viewMode, openMap, onOpenChange }: SubjectGroup
           count={g.items.length}
           open={openMap[g.id] ?? true}
           onOpenChange={(o) => onOpenChange(g.id, o)}
-          headerClassName={g.isToday ? "bg-primary/15 hover:bg-primary/20" : undefined}
+          headerClassName={
+            g.isToday ? "bg-orange-500/15 hover:bg-orange-500/20" : undefined
+          }
         >
           {g.items.length === 0 ? (
             <div className="px-4 py-3 text-xs text-muted-foreground">暂无</div>

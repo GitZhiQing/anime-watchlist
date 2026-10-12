@@ -112,7 +112,7 @@ function Watchlist({
               todayCount > 0 ? (
                 <>
                   {COLLECTION_LABELS[type as CollectionType]}
-                  <span className="ml-1.5 text-xs font-normal text-primary/80">
+                  <span className="ml-1.5 text-xs font-normal text-orange-600 dark:text-orange-400">
                     今日更新 {todayCount} 部
                   </span>
                 </>

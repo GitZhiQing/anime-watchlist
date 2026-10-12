@@ -205,7 +205,7 @@ export function SubjectRow({
             {subject.nsfw && <NSFWBadge />}
             <AirBadge date={subject.date} />
             {todayAiring && (
-              <span className="shrink-0 rounded bg-primary/15 px-1 py-0.5 text-[10px] leading-none font-medium text-primary">
+              <span className="shrink-0 rounded bg-orange-500/15 px-1 py-0.5 text-[10px] leading-none font-medium text-orange-600 dark:text-orange-400">
                 今天更新
               </span>
             )}

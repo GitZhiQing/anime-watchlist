@@ -72,7 +72,7 @@ export function SubjectGridCard({ subject, caption, todayAiring, className }: Su
             <div className="absolute top-1 left-1 flex items-center gap-1">
               {s.nsfw && <NSFWBadge />}
               {todayAiring && (
-                <span className="rounded bg-primary px-1 py-0.5 text-[10px] leading-none font-medium text-primary-foreground">
+                <span className="rounded bg-orange-500 px-1 py-0.5 text-[10px] leading-none font-medium text-white">
                   今日
                 </span>
               )}

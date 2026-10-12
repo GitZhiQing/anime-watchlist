@@ -327,12 +327,14 @@ function P1SubjectCard({
             暂无封面
           </span>
         )}
-        {/* 右上：关系角标 + 条目类型徽标（原评分角标位置） */}
+        {/* 右上：关系角标 + 条目类型徽标（原评分角标位置）。
+            关系角标为玻璃胶囊（半透明 + 磨砂 + 描边），明暗主题双色适配：
+            浅色 = 白玻璃深字 + 深描边，深色 = 深玻璃浅字 + 浅描边 */}
         {(badge || (r.type !== undefined && SUBJECT_LABELS[r.type as SubjectType])) && (
           <div className="absolute top-1 right-1 flex max-w-[calc(100%-0.5rem)] items-start justify-end gap-1">
             {badge && (
               <span
-                className="min-w-0 truncate rounded bg-black/60 px-1 py-0.5 text-[10px] leading-none text-white"
+                className="min-w-0 truncate rounded border border-black/10 bg-white/60 px-1 py-0.5 text-[10px] leading-none text-neutral-800 backdrop-blur-sm dark:border-white/25 dark:bg-neutral-900/55 dark:text-neutral-100"
                 title={badge}
               >
                 {badge}
