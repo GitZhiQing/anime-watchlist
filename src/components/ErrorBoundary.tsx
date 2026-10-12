@@ -4,6 +4,8 @@ interface ErrorBoundaryProps {
   children: ReactNode;
   /** 降级文案主体（如「详情」），默认「该区块」 */
   label?: string;
+  /** 自定义降级渲染（根级边界用它渲染整页兜底） */
+  fallback?: (error: Error) => ReactNode;
 }
 
 interface ErrorBoundaryState {
@@ -24,8 +26,14 @@ export class ErrorBoundary extends Component<
     return { error };
   }
 
+  componentDidCatch(error: Error) {
+    // 边界只负责降级不中断渲染，错误同时打到 console 便于排障
+    console.error("[ErrorBoundary]", this.props.label ?? "root", error);
+  }
+
   render() {
     if (this.state.error) {
+      if (this.props.fallback) return this.props.fallback(this.state.error);
       return (
         <div className="py-3 text-xs text-destructive">
           {this.props.label ?? "该区块"}渲染出错：{this.state.error.message}
