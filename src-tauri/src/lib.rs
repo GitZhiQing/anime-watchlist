@@ -1,9 +1,13 @@
 // 追番计划 - Tauri 后端
-// 注册 store / http / opener 插件，并提供 OAuth 本地回环服务器命令。
+// 注册 store / http / opener / window-state 插件，提供 OAuth 本地回环服务器命令、
+// 备份文件读写命令与封面代理协议（cover://，磁盘缓存 + 复用代理配置取图）。
 
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use tauri::{Emitter, State};
+use std::time::{Duration, SystemTime};
+use tauri::{Emitter, Manager, State};
+use tauri_plugin_http::reqwest;
 
 // 回调端口范围：默认从 7359 起逐个尝试到 7369，找到首个可用端口。
 // Bangumi 换 token 时校验的 redirect_uri 等于授权时用的动态值（与后台登记无关，
@@ -332,6 +336,187 @@ fn read_text_file(path: String) -> Result<String, String> {
     std::fs::read_to_string(&path).map_err(|e| e.to_string())
 }
 
+// ===== 封面代理协议（cover://）=====
+// WebView 的 <img> 直连 lain.bgm.tv：不经 Rust 侧代理（代理用户封面裂图）、无跨会话缓存。
+// 本协议把封面取图收口到 Rust：磁盘缓存命中直接回包；miss 经 tauri-plugin-http 的
+// reqwest 取图（复用 store 中的代理配置）→ 落盘 → 回包。仅放行 lain.bgm.tv（防 SSRF）。
+
+/// 缓存总量上限 / 淘汰低水位（字节）：超上限按 mtime 从旧到新删至低水位
+const COVER_CACHE_MAX: u64 = 200 * 1024 * 1024;
+const COVER_CACHE_LOW: u64 = 150 * 1024 * 1024;
+
+/// store 落盘的代理配置（与前端 ProxyConfig 同构）
+#[derive(serde::Deserialize)]
+struct ProxyCfg {
+    url: String,
+    #[serde(default)]
+    username: Option<String>,
+    #[serde(default)]
+    password: Option<String>,
+}
+
+/// 读取代理配置：直接解析 store 的 config.json（兼容 data/config 两个基准目录，
+/// 规避 store 插件 Rust API 版本漂移；文件很小，每次请求读取开销可忽略）。
+fn read_proxy_cfg(app: &tauri::AppHandle) -> Option<ProxyCfg> {
+    for base in [app.path().app_data_dir(), app.path().app_config_dir()] {
+        let Ok(base) = base else { continue };
+        let Ok(text) = std::fs::read_to_string(base.join("config.json")) else {
+            continue;
+        };
+        let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) else {
+            continue;
+        };
+        if let Some(cfg) = json.get("proxy").filter(|v| v.is_object()) {
+            if let Ok(cfg) = serde_json::from_value::<ProxyCfg>(cfg.clone()) {
+                if !cfg.url.is_empty() {
+                    return Some(cfg);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// FNV-1a 64 位哈希做缓存键（进程内稳定即可，无密码学需求，零新增依赖）
+fn fnv1a64(s: &str) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in s.as_bytes() {
+        hash ^= *b as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
+}
+
+fn cover_cache_dir(app: &tauri::AppHandle) -> Option<PathBuf> {
+    app.path()
+        .app_cache_dir()
+        .ok()
+        .map(|d| d.join("covers").join("v1"))
+}
+
+/// URL 扩展名（缓存文件后缀 / Content-Type），未知按 jpg
+fn ext_of(url: &str) -> &'static str {
+    let lower = url.split('?').next().unwrap_or("").to_ascii_lowercase();
+    for ext in ["jpg", "jpeg", "png", "webp", "gif"] {
+        if lower.ends_with(&format!(".{ext}")) {
+            return ext;
+        }
+    }
+    "jpg"
+}
+
+fn mime_of(ext: &str) -> &'static str {
+    match ext {
+        "png" => "image/png",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        _ => "image/jpeg",
+    }
+}
+
+fn not_found() -> tauri::http::Response<Vec<u8>> {
+    tauri::http::Response::builder()
+        .status(404)
+        .body(Vec::new())
+        .unwrap()
+}
+
+/// 缓存淘汰：总量超上限时按 mtime 从旧到新删除至低水位（启动时后台执行一次）
+fn prune_cover_cache(app: &tauri::AppHandle) {
+    let Some(dir) = cover_cache_dir(app) else { return };
+    let Ok(read_dir) = std::fs::read_dir(&dir) else {
+        return;
+    };
+    let mut entries: Vec<(PathBuf, SystemTime, u64)> = Vec::new();
+    for e in read_dir.flatten() {
+        let Ok(meta) = e.metadata() else { continue };
+        if !meta.is_file() {
+            continue;
+        }
+        let mtime = meta.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+        entries.push((e.path(), mtime, meta.len()));
+    }
+    let total: u64 = entries.iter().map(|(_, _, s)| *s).sum();
+    if total <= COVER_CACHE_MAX {
+        return;
+    }
+    entries.sort_by_key(|(_, mtime, _)| *mtime);
+    let mut remain = total;
+    for (path, _, size) in entries {
+        if remain <= COVER_CACHE_LOW {
+            break;
+        }
+        if std::fs::remove_file(&path).is_ok() {
+            remain = remain.saturating_sub(size);
+        }
+    }
+}
+
+/// 处理一次封面请求：?u=<encodeURIComponent(lain URL)>
+async fn handle_cover(
+    app: tauri::AppHandle,
+    request: tauri::http::Request<Vec<u8>>,
+) -> tauri::http::Response<Vec<u8>> {
+    let Some(url) = extract_query_value(&request.uri().to_string(), "u") else {
+        return not_found();
+    };
+    // 仅放行 lain.bgm.tv（防 SSRF）
+    if !(url.starts_with("https://lain.bgm.tv/")
+        || url.starts_with("http://lain.bgm.tv/"))
+    {
+        return not_found();
+    }
+    let ext = ext_of(&url);
+    let key = format!("{:016x}.{}", fnv1a64(&url), ext);
+
+    // 磁盘缓存命中 → 直接回包
+    if let Some(dir) = cover_cache_dir(&app) {
+        if let Ok(bytes) = std::fs::read(dir.join(&key)) {
+            return tauri::http::Response::builder()
+                .status(200)
+                .header("Content-Type", mime_of(ext))
+                .body(bytes)
+                .unwrap();
+        }
+    }
+
+    // miss → 经插件 HTTP 栈取图（复用代理配置），成功后 tmp+rename 落盘再回包
+    let mut builder = reqwest::Client::builder().timeout(Duration::from_secs(30));
+    if let Some(cfg) = read_proxy_cfg(&app) {
+        if let Ok(proxy) = reqwest::Proxy::all(&cfg.url) {
+            let proxy = match (cfg.username, cfg.password) {
+                (Some(u), Some(p)) => proxy.basic_auth(&u, &p),
+                _ => proxy,
+            };
+            builder = builder.proxy(proxy);
+        }
+    }
+    let Ok(client) = builder.build() else {
+        return not_found();
+    };
+    let Ok(resp) = client.get(&url).send().await else {
+        return not_found();
+    };
+    if !resp.status().is_success() {
+        return not_found();
+    }
+    let Ok(bytes) = resp.bytes().await else {
+        return not_found();
+    };
+    if let Some(dir) = cover_cache_dir(&app) {
+        let _ = std::fs::create_dir_all(&dir);
+        let tmp = dir.join(format!("{key}.tmp"));
+        if std::fs::write(&tmp, &bytes).is_ok() {
+            let _ = std::fs::rename(&tmp, dir.join(&key));
+        }
+    }
+    tauri::http::Response::builder()
+        .status(200)
+        .header("Content-Type", mime_of(ext))
+        .body(bytes.to_vec())
+        .unwrap()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -339,7 +524,21 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .manage::<OauthState>(Mutex::new(None))
+        .setup(|app| {
+            // 启动时后台做一次封面缓存淘汰（超限才动作，通常瞬时返回）
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn_blocking(move || prune_cover_cache(&handle));
+            Ok(())
+        })
+        .register_asynchronous_uri_scheme_protocol("cover", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let response = handle_cover(app, request).await;
+                let _ = responder.respond(response);
+            });
+        })
         .invoke_handler(tauri::generate_handler![
             start_oauth_server,
             stop_oauth_server,

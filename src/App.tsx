@@ -112,6 +112,9 @@ export default function App() {
     userInteracted.current = true;
     setPage(key);
   }
+  // 全局快捷键（空依赖 effect）经 ref 调用最新 navigate
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
 
   /* 未登录引导：认证判定完成仍无 user 且用户从未手动切页 → 落地新番页（游客可浏览，
    * 空追番页对游客零价值）。用户切过页则不再打扰 */
@@ -224,24 +227,34 @@ export default function App() {
     Object.fromEntries(COLLECTION_ORDER.map((t) => [t, true])),
   );
 
-  /** "/" 聚焦当前可见页面的搜索框（输入框内不拦截；隐藏页面的输入框不可聚焦） */
+  /** "/" 聚焦当前可见页面的搜索框；Ctrl+1..6 按侧边栏顺序切页（输入框内不拦截） */
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
-      if (
-        t &&
-        (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)
-      ) {
+      const inEditable =
+        !!t &&
+        (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+      if (e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (inEditable) return;
+        const input = document.querySelector<HTMLInputElement>(
+          "input[data-search-input]",
+        );
+        if (input && input.offsetParent !== null) {
+          e.preventDefault();
+          input.focus();
+          input.select();
+        }
         return;
       }
-      const input = document.querySelector<HTMLInputElement>(
-        "input[data-search-input]",
-      );
-      if (input && input.offsetParent !== null) {
-        e.preventDefault();
-        input.focus();
-        input.select();
+      if (e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && e.key >= "1" && e.key <= "9") {
+        // Ctrl+数字切页（侧边栏顺序）；输入框内不拦截，避免打断数字输入
+        if (inEditable) return;
+        const idx = Number(e.key) - 1;
+        const target = NAV[idx]?.key;
+        if (target) {
+          e.preventDefault();
+          navigateRef.current(target);
+        }
       }
     }
     window.addEventListener("keydown", onKey);
@@ -258,11 +271,11 @@ export default function App() {
       <div className="flex min-h-0 flex-1">
         {/* 侧边栏 */}
         <nav className="flex w-16 shrink-0 flex-col items-center gap-2 border-r border-border bg-background py-3">
-          {NAV.map(({ key, label, icon: Icon }) => (
+          {NAV.map(({ key, label, icon: Icon }, i) => (
             <button
               key={key}
               onClick={() => navigate(key)}
-              title={label}
+              title={`${label}（Ctrl+${i + 1}）`}
               className={cn(
                 "flex w-12 flex-col items-center gap-1 rounded-md py-2 text-xs transition-colors",
                 page === key

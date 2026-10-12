@@ -28,10 +28,26 @@ const FALLBACK_KEYS: Record<CoverWidth, (keyof SubjectImages)[]> = {
   800: ["medium", "large", "common", "small", "grid"],
 };
 
+/** 封面代理协议源：WebView2 自定义 scheme 的访问形式。
+ *  Rust 侧（lib.rs register_uri_scheme_protocol）做磁盘缓存 + 复用代理配置取图；
+ *  若实测访问形式不符（如需 https），仅需调整此常量。 */
+const COVER_PROTOCOL = "http://cover.localhost/";
+
+/** lain.bgm.tv 图片一律改走应用自定义协议（Rust 侧取图：磁盘缓存跨会话 + 代理用户可用），
+ *  非 lain 源原样返回。coverUrl 的全部产出与其他直连 lain 的图（头像/原图放大）统一经此收口。 */
+export function resolveCoverSrc(url: string | undefined): string | undefined {
+  if (!url) return url;
+  if (/^https?:\/\/lain\.bgm\.tv\//.test(url)) {
+    return `${COVER_PROTOCOL}?u=${encodeURIComponent(url)}`;
+  }
+  return url;
+}
+
 /** 按容器档位取封面 URL。lain.bgm.tv 的 `/r/<宽>/` 是官方缩放前缀——v0 各字段
  *  即 r/100|200|400|800 包裹同一原始 l/ 路径（2026-10 实测条目详情/用户收藏/
  *  搜索同构、common=r/400；p1 同形但同名键小一档）——故任意 lain 原始路径都可
- *  改写到精确档位（http 顺带归一 https），非 lain/非原始路径源回退就近字段。 */
+ *  改写到精确档位（http 顺带归一 https），非 lain/非原始路径源回退就近字段。
+ *  产出统一经 resolveCoverSrc 走 cover:// 协议（含回退字段的 lain URL）。 */
 export function coverUrl(
   images: SubjectImages | undefined,
   width: CoverWidth,
@@ -40,12 +56,14 @@ export function coverUrl(
   for (const key of SOURCE_KEYS) {
     const url = images[key];
     if (url && LAIN_SOURCE.test(url)) {
-      return url.replace(LAIN_PREFIX, `https://lain.bgm.tv/r/${width}/`);
+      return resolveCoverSrc(
+        url.replace(LAIN_PREFIX, `https://lain.bgm.tv/r/${width}/`),
+      );
     }
   }
   for (const key of FALLBACK_KEYS[width]) {
     const url = images[key];
-    if (url) return url;
+    if (url) return resolveCoverSrc(url);
   }
   return undefined;
 }

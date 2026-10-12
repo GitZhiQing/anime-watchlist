@@ -31,7 +31,7 @@ import {
   useSubjectDetail,
   useUserCollectionSmart,
 } from "@/lib/queries";
-import { coverUrl } from "@/lib/cover";
+import { coverUrl, resolveCoverSrc } from "@/lib/cover";
 import {
   SUBJECT_BADGE_STYLES,
   SUBJECT_LABELS,
@@ -89,7 +89,8 @@ function ZoomableCover({
   const title = subject.name_cn || subject.name;
   // 96px 容器取 400 档：与网格卡同 URL 共享缓存，高 DPI 下清晰
   const src = coverUrl(subject.images, 400);
-  const zoom = subject.images?.large || subject.images?.medium;
+  // 原图放大同样走 cover:// 协议（磁盘缓存 + 代理可用）
+  const zoom = resolveCoverSrc(subject.images?.large || subject.images?.medium);
   if (!src) return null;
   return (
     <Dialog>

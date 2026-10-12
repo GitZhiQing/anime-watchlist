@@ -26,6 +26,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { REDIRECT_URI } from "@/lib/bgm";
+import { resolveCoverSrc } from "@/lib/cover";
 import { invalidateProxyCache, testProxy } from "@/lib/proxy";
 import {
   StoreKeys,
@@ -384,8 +385,11 @@ export function Config() {
         <section className="space-y-4 rounded-lg border border-border p-5">
           <div className="flex items-center gap-4">
             <Avatar className="size-16">
-              {/* large 档：64px 容器在高 DPI 下 medium 偏糊 */}
-              <AvatarImage src={user.avatar.large} alt={user.nickname} />
+              {/* large 档：64px 容器在高 DPI 下 medium 偏糊；lain 头像统一走 cover:// 协议 */}
+              <AvatarImage
+                src={resolveCoverSrc(user.avatar.large)}
+                alt={user.nickname}
+              />
               <AvatarFallback>
                 {user.nickname.slice(0, 1)}
               </AvatarFallback>
