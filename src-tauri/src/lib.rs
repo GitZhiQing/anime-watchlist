@@ -325,6 +325,13 @@ fn write_text_file(path: String, contents: String) -> Result<(), String> {
     std::fs::write(&path, contents.as_bytes()).map_err(|e| e.to_string())
 }
 
+/// 数据恢复：读取用户通过文件对话框选定的备份 JSON 全文。
+/// 与 write_text_file 对称，同样不引入 fs 插件权限面。
+#[tauri::command]
+fn read_text_file(path: String) -> Result<String, String> {
+    std::fs::read_to_string(&path).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -336,7 +343,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             start_oauth_server,
             stop_oauth_server,
-            write_text_file
+            write_text_file,
+            read_text_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

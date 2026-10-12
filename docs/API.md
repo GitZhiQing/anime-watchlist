@@ -207,9 +207,11 @@ body 只传 `{ "type": <CollectionType>, "private": true }`，其余字段（rat
 
 #### PATCH /v0/users/-/collections/{subject_id} 修改收藏
 
-body 为 `CollectionPatch` 子集：`type`（收藏夹）、`ep_status`、`vol_status`、`rate`、`comment`、`private`。本应用用于：切换收藏夹、编辑进度（`ProgressEdit.tsx`）、评分（`Watchlist.tsx`）。
+body 为 `CollectionPatch` 子集：`type`（收藏夹）、`ep_status`、`vol_status`、`rate`、`comment`、`tags`、`private`。本应用用于：切换收藏夹、编辑进度（`ProgressEdit.tsx`）、评分（`Watchlist.tsx`）、备份恢复（`backup.ts`）。
 
 > 官方文档警告「直接修改剧集条目完成度只能用于书籍类条目」，**实测**修改收藏夹与动画进度均可用。**改非 type 字段时也必须带 `private`**（服务端要求）。
+
+> `tags` 字段的接受度**未实测验证**（官方文档未明确列出）：备份恢复路径带 `tags` PATCH 失败时会自动去掉 `tags` 重试一次并计入 `tagsDropped`（`backup.ts` `patchEntry`），待有真实账号实测后在此补记结论。
 
 > **没有「取消收藏」端点**：官方 OpenAPI 对该路径只定义 POST/PATCH，服务端 routes.go 中条目/人物/角色的 DELETE 均因 `TODO: wait for soft delete` 未实现（实测返回框架默认 404「This is default response」）。本应用因此**不提供取消收藏功能**，勿凭文档添加 DELETE 调用。
 

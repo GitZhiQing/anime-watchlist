@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, Copy, ExternalLink, FolderOpen, Info, Loader2, LogOut } from "lucide-react";
+import { Check, ChevronDown, Copy, ExternalLink, FolderOpen, Info, Loader2, LogOut, Upload } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -7,6 +9,14 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
@@ -27,7 +37,16 @@ import {
 import type { ProxyConfig } from "@/lib/store";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { useOAuthFlow, type OAuthMode } from "@/hooks/useOAuthFlow";
-import { pickBackupDir, runBackup } from "@/lib/backup";
+import {
+  parseBackupPayload,
+  pickBackupDir,
+  planRestore,
+  runBackup,
+  runRestore,
+  type BackupPayload,
+  type RestoreMode,
+  type RestorePlan,
+} from "@/lib/backup";
 import { cn } from "@/lib/utils";
 
 function errText(err: unknown): string {
@@ -60,6 +79,16 @@ export function Config() {
   /** 上次备份完成时间（epoch ms）；null = 从未备份。 */
   const [lastBackupAt, setLastBackupAt] = useState<number | null>(null);
   const [backingUp, setBackingUp] = useState(false);
+
+  // 数据恢复（导入）：预览 → 选模式 → 执行（进度）→ 汇总
+  const [restorePreview, setRestorePreview] = useState<{
+    path: string;
+    payload: BackupPayload;
+    plan: RestorePlan;
+  } | null>(null);
+  const [restoreMode, setRestoreMode] = useState<RestoreMode>("skip");
+  const [restoring, setRestoring] = useState(false);
+  const [restoreProgress, setRestoreProgress] = useState<{ done: number; total: number } | null>(null);
 
   // OAuth 交互选项
   const [mode, setMode] = useState<OAuthMode>("auto");
@@ -278,6 +307,59 @@ export function Config() {
       toast.error("备份失败", { description: errText(err) });
     } finally {
       setBackingUp(false);
+    }
+  }
+
+  /** 选择备份文件：读取 → 解析校验 → 与当前收藏对比出恢复计划 → 弹预览。 */
+  async function handlePickRestoreFile() {
+    if (!user || restoring) return;
+    try {
+      const picked = await open({
+        multiple: false,
+        directory: false,
+        title: "选择备份文件",
+        filters: [{ name: "备份 JSON", extensions: ["json"] }],
+      });
+      if (!picked || Array.isArray(picked)) return; // 用户取消
+      const text = await invoke<string>("read_text_file", { path: picked });
+      const payload = parseBackupPayload(text);
+      const plan = await planRestore(user.username, payload, queryClient);
+      setRestoreMode("skip");
+      setRestorePreview({ path: picked, payload, plan });
+    } catch (err) {
+      toast.error("读取备份失败", { description: errText(err) });
+    }
+  }
+
+  /** 执行恢复：完成后全量失效收藏缓存（显式全量操作，允许全量重拉）并 toast 汇总。 */
+  async function handleRestore() {
+    if (!restorePreview || !user || restoring) return;
+    setRestoring(true);
+    setRestoreProgress({ done: 0, total: 0 });
+    try {
+      const result = await runRestore(
+        restorePreview.plan,
+        restoreMode,
+        (done, total) => setRestoreProgress({ done, total }),
+      );
+      await queryClient.invalidateQueries({ queryKey: ["collections"] });
+      await queryClient.invalidateQueries({ queryKey: ["collection"] });
+      setRestorePreview(null);
+      const notes = [
+        result.failed.length > 0 ? `${result.failed.length} 条失败` : null,
+        result.tagsDropped > 0 ? `${result.tagsDropped} 条的个人标签未恢复` : null,
+      ].filter(Boolean);
+      toast.success(
+        `恢复完成：新增 ${result.added} 条${
+          restoreMode === "overwrite" ? `、覆盖 ${result.patched} 条` : ""
+        }`,
+        notes.length > 0 ? { description: notes.join("；") } : undefined,
+      );
+    } catch (err) {
+      toast.error("恢复失败", { description: errText(err) });
+    } finally {
+      setRestoring(false);
+      setRestoreProgress(null);
     }
   }
 
@@ -678,11 +760,14 @@ export function Config() {
               </p>
               <p>文件：每次备份生成一个带时间戳的新文件，不覆盖历史备份</p>
               <p>目录：记住上次选择，之后点「立即备份」即可再次导出</p>
+              <p>
+                恢复：增量恢复（新增缺失收藏，可选覆盖已收藏）；不删除现有收藏，不含网页端逐集勾选
+              </p>
             </TooltipContent>
           </Tooltip>
         </div>
         <p className="text-sm text-muted-foreground">
-          将全部收藏导出为 JSON 文件保存到本地目录，用于留存或迁移。
+          将全部收藏导出为 JSON 文件保存到本地目录；数据丢失时可通过「从备份恢复」增量找回。
         </p>
         {user ? (
           <>
@@ -722,19 +807,24 @@ export function Config() {
                 ? new Date(lastBackupAt).toLocaleString()
                 : "从未备份"}
             </p>
-            <Button
-              onClick={handleBackup}
-              disabled={backingUp}
-              className="w-full"
-            >
-              {backingUp ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" /> 备份中…
-                </>
-              ) : (
-                "立即备份"
-              )}
-            </Button>
+            <div className="grid grid-cols-2 gap-2">
+              <Button onClick={handleBackup} disabled={backingUp || restoring}>
+                {backingUp ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" /> 备份中…
+                  </>
+                ) : (
+                  "立即备份"
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handlePickRestoreFile}
+                disabled={restoring || backingUp}
+              >
+                <Upload className="size-4" /> 从备份恢复…
+              </Button>
+            </div>
           </>
         ) : (
           <p className="text-sm text-muted-foreground">
@@ -744,6 +834,135 @@ export function Config() {
       </section>
       </div>
       )}
+
+      {/* 恢复预览/进度对话框：执行中禁止关闭 */}
+      <Dialog
+        open={!!restorePreview}
+        onOpenChange={(o) => {
+          if (!restoring) setRestorePreview(o ? restorePreview : null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>从备份恢复</DialogTitle>
+            <DialogDescription>
+              增量恢复：新增缺失收藏并恢复其收藏夹/评分/进度/备注，不会删除当前账号已有的收藏。
+            </DialogDescription>
+          </DialogHeader>
+          {restoring ? (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                恢复中…
+                {restoreProgress && restoreProgress.total > 0
+                  ? ` ${restoreProgress.done} / ${restoreProgress.total}`
+                  : ""}
+              </p>
+              <div className="h-2 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full bg-primary transition-all"
+                  style={{
+                    width: `${
+                      restoreProgress && restoreProgress.total > 0
+                        ? Math.min(
+                            100,
+                            (restoreProgress.done / restoreProgress.total) * 100,
+                          )
+                        : 0
+                    }%`,
+                  }}
+                />
+              </div>
+            </div>
+          ) : restorePreview ? (
+            <div className="space-y-4">
+              <div className="space-y-1 text-sm">
+                <p
+                  className="truncate text-muted-foreground"
+                  title={restorePreview.path}
+                >
+                  文件：{restorePreview.path}
+                </p>
+                <p className="text-muted-foreground">
+                  导出自 {restorePreview.payload.username} ·{" "}
+                  {new Date(restorePreview.payload.exportedAt).toLocaleString()}{" "}
+                  · 共 {restorePreview.plan.total} 条
+                </p>
+              </div>
+              <div className="space-y-1 text-sm">
+                <p>
+                  当前账号未收藏：
+                  <strong>{restorePreview.plan.toAdd.length}</strong>
+                  条（将新增并恢复字段）
+                </p>
+                <p>
+                  已收藏：
+                  <strong>{restorePreview.plan.toPatch.length}</strong>
+                  条
+                  {restoreMode === "overwrite"
+                    ? "（将被备份覆盖）"
+                    : "（保持不动）"}
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-sm">已收藏条目的处理方式：</p>
+                <div className="inline-flex rounded-md border border-border p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setRestoreMode("skip")}
+                    className={cn(
+                      "rounded px-3 py-1 text-sm",
+                      restoreMode === "skip"
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    跳过（推荐）
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRestoreMode("overwrite")}
+                    className={cn(
+                      "rounded px-3 py-1 text-sm",
+                      restoreMode === "overwrite"
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    用备份覆盖
+                  </button>
+                </div>
+                {restoreMode === "overwrite" && (
+                  <p className="text-xs text-destructive">
+                    覆盖将改写这些条目当前的收藏夹、评分、进度与备注，请确认备份较新。
+                  </p>
+                )}
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setRestorePreview(null)}
+                >
+                  取消
+                </Button>
+                <Button
+                  onClick={handleRestore}
+                  disabled={
+                    (restoreMode === "skip"
+                      ? restorePreview.plan.toAdd.length
+                      : restorePreview.plan.total) === 0
+                  }
+                >
+                  {(restoreMode === "skip"
+                    ? restorePreview.plan.toAdd.length
+                    : restorePreview.plan.total) === 0
+                    ? "无需恢复"
+                    : "开始恢复"}
+                </Button>
+              </DialogFooter>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </PageLayout>
   );
 }

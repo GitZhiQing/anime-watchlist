@@ -328,7 +328,7 @@ const MAX_PAGES = 100;
 
 /** 有界并发 map：最多 concurrency 个任务并行，结果按输入顺序返回。
  *  任一任务失败 → 停止派发新任务，等在途任务落定后整体 reject（无悬挂/未捕获）。 */
-async function mapWithConcurrency<T, R>(
+export async function mapWithConcurrency<T, R>(
   items: readonly T[],
   fn: (item: T) => Promise<R>,
   concurrency: number,
@@ -423,6 +423,7 @@ export interface CollectionPatch {
   vol_status?: number;
   rate?: number;
   comment?: string;
+  tags?: string[];
   private?: boolean;
 }
 
