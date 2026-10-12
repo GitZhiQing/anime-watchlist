@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Copy, ExternalLink, FolderOpen, Info, Loader2, LogOut } from "lucide-react";
+import { Check, ChevronDown, Copy, ExternalLink, FolderOpen, Info, Loader2, LogOut } from "lucide-react";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -69,6 +69,8 @@ export function Config() {
   const [manualCode, setManualCode] = useState("");
   /** 复制回调地址的反馈。 */
   const [copied, setCopied] = useState(false);
+  /** 凭据获取向导展开状态（首访默认展开，降低注册门槛）。 */
+  const [guideOpen, setGuideOpen] = useState(true);
 
   /** 用户编辑任一代理字段时：清除「已保存」闪烁态与遗留的测试/保存文案。 */
   function onProxyEdit() {
@@ -347,6 +349,48 @@ export function Config() {
               注册一个应用，然后将 App ID 和 App Secret 填入下方。
             </p>
           )}
+
+          {/* 凭据获取向导：分步指引，可折叠（与搜索历史折叠交互一致） */}
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => setGuideOpen((o) => !o)}
+              title={guideOpen ? "折叠" : "展开"}
+              className="flex cursor-pointer items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ChevronDown
+                className={cn(
+                  "size-3.5 transition-transform",
+                  !guideOpen && "-rotate-90",
+                )}
+              />
+              如何创建应用？（约 1 分钟）
+            </button>
+            {guideOpen && (
+              <ol className="list-decimal space-y-1.5 pl-5 text-sm text-muted-foreground">
+                <li>
+                  打开{" "}
+                  <a
+                    href="https://bgm.tv/dev/app"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-foreground underline"
+                  >
+                    bgm.tv 开发者后台
+                  </a>{" "}
+                  并登录 Bangumi 账号。
+                </li>
+                <li>
+                  点击「创建新应用」：名称随意填（如「个人追番」），其余保持默认即可——
+                  默认的动态端口模式下<strong className="font-medium">无需登记回调地址</strong>。
+                </li>
+                <li>
+                  创建后在应用列表找到它，复制 App ID 与 App Secret 填入下方输入框，
+                  点击「Bangumi 认证」完成登录。
+                </li>
+              </ol>
+            )}
+          </div>
           <div className="space-y-2">
             <Label htmlFor="client-id">App ID</Label>
             <Input

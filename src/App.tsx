@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BookHeart, CalendarDays, Info, Loader2, Search, Settings } from "lucide-react";
 import { useQueries } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
 import { PageLayout } from "@/components/layout/PageLayout";
 import { TitleBar } from "@/components/layout/TitleBar";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
@@ -94,6 +95,21 @@ export default function App() {
 
   const { user, loading: userLoading } = useAuthUser();
   const username = user?.username;
+
+  /** 用户是否手动切换过页面。未登录自动落地新番页只应发生在「从未手动切页」时：
+   *  覆盖冷启动无凭据与登录态中途丢失（注销/会话失效）两种情形 */
+  const userInteracted = useRef(false);
+  function navigate(key: PageKey) {
+    userInteracted.current = true;
+    setPage(key);
+  }
+
+  /* 未登录引导：认证判定完成仍无 user 且用户从未手动切页 → 落地新番页（游客可浏览，
+   * 空追番页对游客零价值）。用户切过页则不再打扰 */
+  useEffect(() => {
+    if (userLoading) return;
+    if (!user && !userInteracted.current) setPage("calendar");
+  }, [userLoading, user]);
 
   /** 收藏列表按需拉取：首次进入追番页才启用（此后保持），冷启动停在其他页不产生请求风暴 */
   const [watchlistVisited, setWatchlistVisited] = useState(false);
@@ -232,7 +248,7 @@ export default function App() {
           {NAV.map(({ key, label, icon: Icon }) => (
             <button
               key={key}
-              onClick={() => setPage(key)}
+              onClick={() => navigate(key)}
               title={label}
               className={cn(
                 "flex w-12 flex-col items-center gap-1 rounded-md py-2 text-xs transition-colors",
@@ -269,9 +285,29 @@ export default function App() {
                     </PageLayout>
                   ) : !user ? (
                     <PageLayout title="追番">
-                      <p className="text-sm text-muted-foreground">
-                        请先到「配置」页完成 Bangumi 认证。
-                      </p>
+                      <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
+                        <BookHeart className="size-10 text-muted-foreground/60" />
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium">
+                            登录后同步你的 Bangumi 收藏
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            在看 / 想看 / 看过的收藏夹、评分与进度，登录后自动同步
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={() => navigate("config")}>
+                            <Settings className="size-4" /> 去认证
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => navigate("calendar")}
+                          >
+                            先逛逛新番
+                          </Button>
+                        </div>
+                      </div>
                     </PageLayout>
                   ) : (
                     <WatchlistPage
@@ -290,7 +326,7 @@ export default function App() {
                       onSortChange={setSortKey}
                       sortDir={sortDir}
                       onToggleSortDir={toggleSortReversed}
-                      onNavigate={setPage}
+                      onNavigate={navigate}
                     />
                   )
                 ) : key === "calendar" ? (
@@ -298,6 +334,7 @@ export default function App() {
                 ) : (
                   <Collection
                     visited={collectionVisited || page === "collection"}
+                    onNavigate={navigate}
                   />
                 )}
               </div>

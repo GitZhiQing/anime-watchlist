@@ -18,6 +18,7 @@ import { SUBJECT_LABELS, SUBJECT_TYPES, SubjectType } from "@/types/bgm";
 import { cn } from "@/lib/utils";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { usePersistentState } from "@/hooks/usePersistentState";
+import type { PageKey } from "@/App";
 
 const MAX_HISTORY = 10;
 
@@ -109,9 +110,11 @@ function TrendingList({ enabled }: { enabled: boolean }) {
 interface CollectionProps {
   /** 首次进入本页才启用热度榜查询（App 冷启动门控，keep-alive 首帧即渲染） */
   visited?: boolean;
+  /** 未登录横幅「去认证」跳转（App 注入 navigate） */
+  onNavigate?: (page: PageKey) => void;
 }
 
-export function Collection({ visited = true }: CollectionProps) {
+export function Collection({ visited = true, onNavigate }: CollectionProps) {
   const { user } = useAuthUser();
   const [keyword, setKeyword] = useState("");
   const [submitted, setSubmitted] = useState<string | null>(null);
@@ -143,9 +146,19 @@ export function Collection({ visited = true }: CollectionProps) {
     <PageLayout title="找番">
       <div className="space-y-4">
         {!user && (
-          <p className="text-sm text-muted-foreground">
-            收藏需要先到「配置」页完成认证。
-          </p>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <span>收藏需要先完成 Bangumi 认证。</span>
+            {onNavigate && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-6 px-2 text-xs"
+                onClick={() => onNavigate("config")}
+              >
+                去认证
+              </Button>
+            )}
+          </div>
         )}
 
         <form
