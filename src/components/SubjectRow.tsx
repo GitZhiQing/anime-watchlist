@@ -16,6 +16,7 @@ import { FadeImg } from "@/components/FadeImg";
 import { BangumiLink } from "@/components/BangumiLink";
 import { CollectAction } from "@/components/CollectAction";
 import { usePrefetchSubject } from "@/lib/queries";
+import { coverUrl } from "@/lib/cover";
 import { cn } from "@/lib/utils";
 import type { SlimSubject } from "@/types/bgm";
 import { SubjectType, SUBJECT_LABELS, SUBJECT_BADGE_STYLES } from "@/types/bgm";
@@ -114,8 +115,8 @@ export function SubjectRow({
 }: SubjectRowProps) {
   const [open, setOpen] = useState(false);
   const title = subject.name_cn || subject.name || `#${subject.id}`;
-  const cover = subject.images?.small;
-  const coverMedium = subject.images?.medium;
+  const cover = coverUrl(subject.images, 200);
+  const coverZoom = coverUrl(subject.images, 800);
   const tags = (subject.tags ?? []).slice(0, MAX_TAGS);
 
   // 悬停/聚焦 300ms 后预取完整详情，展开时秒开（staleTime 内重复预取零请求）
@@ -163,7 +164,7 @@ export function SubjectRow({
           <DialogContent showCloseButton={false} variant="image">
             <DialogTitle className="sr-only">{title} 封面</DialogTitle>
             <img
-              src={coverMedium}
+              src={coverZoom}
               alt={title}
               className="max-h-[85vh] max-w-[90vw] rounded object-contain"
             />

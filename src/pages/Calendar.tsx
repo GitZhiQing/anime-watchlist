@@ -116,7 +116,9 @@ function collectionTotal(collection?: Partial<CollectionStat>): number {
 }
 
 /** CalendarSubject → SlimSubject 字段映射，使 SubjectRow 可复用；
- *  简介等缺失字段由 EnrichedSubjectRow 进入视口后自动补全 */
+ *  简介等缺失字段由 EnrichedSubjectRow 进入视口后自动补全。
+ *  封面 images 原样透传——尺寸适配统一由 coverUrl 从 large 的 l/ 原始路径改写，
+ *  经典 s/m/c/g 缩略路径不做字段级重映射。 */
 function calendarToSlimSubject(cs: CalendarSubject): SlimSubject {
   return {
     id: cs.id,
@@ -129,11 +131,7 @@ function calendarToSlimSubject(cs: CalendarSubject): SlimSubject {
     date: cs.air_date
       ? `${cs.air_date}    周${WEEKDAY_CN[cs.air_weekday] || ""}`
       : "",
-    images: {
-      ...cs.images,
-      small: cs.images?.common || cs.images?.grid || cs.images?.medium || cs.images?.small,
-      medium: cs.images?.large || cs.images?.common || cs.images?.medium,
-    },
+    images: cs.images ?? {},
     eps: cs.eps || cs.eps_count || undefined,
     score: cs.rating?.score ?? 0,
     rank: cs.rating?.rank,

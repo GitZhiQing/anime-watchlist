@@ -6,8 +6,9 @@ import type { SlimSubject, Subject } from "@/types/bgm";
 
 /** 详情补全合并：列表接口普遍缺简介/标签/NSFW，detail 存在时用
  *  GET /v0/subjects/{id} 的结果回填；无 detail（未加载/失败）时保持原样。
- *  images 一并回填：p1/日历源的尺寸键与 v0 漂移（p1 medium=r/200、
- *  calendar medium 仅 100px 缩略图），v0 的 medium=r/800 才是封面弹窗大图。 */
+ *  images 一并回填 v0 权威源：渲染层取图走 coverUrl 按容器档位改写原始路径，
+ *  p1/日历源在 merge 前也已能取到正确尺寸，回填让各档位 URL 与 v0 完全一致
+ *  （跨页共享缓存）。 */
 export function mergeSubjectDetail(
   base: SlimSubject,
   detail?: Subject,

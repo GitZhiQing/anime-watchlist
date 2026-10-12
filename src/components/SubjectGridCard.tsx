@@ -4,6 +4,7 @@ import { SubjectDetailDialog } from "@/components/SubjectDetailDialog";
 import { NSFWBadge } from "@/components/SubjectDetailView";
 import { FadeImg } from "@/components/FadeImg";
 import { usePrefetchSubject } from "@/lib/queries";
+import { coverUrl } from "@/lib/cover";
 import { cn } from "@/lib/utils";
 import type { SlimSubject } from "@/types/bgm";
 import { SubjectType, SUBJECT_LABELS, SUBJECT_BADGE_STYLES } from "@/types/bgm";
@@ -23,6 +24,8 @@ export function SubjectGridCard({ subject, caption, className }: SubjectGridCard
   const [open, setOpen] = useState(false);
   const s = subject;
   const title = s.name_cn || s.name || `#${s.id}`;
+  // 卡片 ≥112px 宽铺满，200 档在高 DPI 下偏糊，取 400 档（与 v0 common 同 URL）
+  const cover = coverUrl(s.images, 400);
 
   const prefetchSubject = usePrefetchSubject();
   const prefetchTimer = useRef<number | undefined>(undefined);
@@ -46,9 +49,9 @@ export function SubjectGridCard({ subject, caption, className }: SubjectGridCard
         title={title}
       >
         <div className="relative aspect-[5/7] w-full overflow-hidden rounded-md border border-border bg-muted/30 transition-colors group-hover:border-primary/40">
-          {s.images?.small ? (
+          {cover ? (
             <FadeImg
-              src={s.images.small}
+              src={cover}
               alt={title}
               loading="lazy"
               className={cn(

@@ -45,6 +45,7 @@ src/
     queries.ts          # TanStack Query hooks（缓存+乐观更新+精准失效+hover预取）
     p1.ts               # p1 私有扩展信息（角色/关联/推荐，宽松解析静默失败）
     trending.ts         # 热度榜（p1）+ 日历兜底映射
+    cover.ts            # 封面取图（lain /r/<宽>/ 官方缩放前缀改写，200/400/800 档）
     utils.ts            # cn() 工具
   hooks/               # useAuthUser / useOAuthFlow / usePersistentState / useInViewOnce
   pages/               # Watchlist / Calendar / Collection / Config / About 五个页面
@@ -74,7 +75,7 @@ docs/                   # 文档（API.md 接口总文档 + dev/ 开发文档，
 - **追番排序**：排序键 默认/收藏/评分/名称/更新（`collect`=条目收藏人数 `collection_total`，接口可能缺省按 0）+ 升降序 toggle。持久化 `prefs.watchlist.sortReversed`（布尔，以各键自然方向为基准取反），老用户已有排序行为不变；「默认」倒序 = 接口原序整体反转
 - **找番搜索历史**：提交关键词即记录——最新在前、去重、上限 10 条，持久化 `prefs.collection.searchHistory`（Store）；搜索框下方 badge 区：点击 badge 填入搜索框、× 删单条、标题行可折叠、「清空」全清；清空搜索框即回热度榜初始态（`submitted` 置 null）
 - **数据备份**：配置页把全部 5 类收藏（含评分/进度/备注/标签/私密标记）导出为带时间戳的 JSON 文件（`anime-watchlist-backup-YYYYMMDD-HHmmss.json`，每次新文件不覆盖历史）。数据仍实时拉 API（「数据不落库」原则不变）：取数复用 `collectionsQueryOptions`（`qc.fetchQuery`，staleTime 内命中缓存零请求）；目录选择走 `@tauri-apps/plugin-dialog`（`dialog:default` 权限），写文件走应用自有 Rust 命令 `write_text_file`（`std::fs::write`，自有命令不占 capability 权限面，**勿为此引入 fs 插件**）；备份目录与上次备份时间持久化 `prefs.backup.dir`/`prefs.backup.last_time`（Store）；备份文件目前仅导出不导入（上游无取消收藏端点，无法全量还原，见下方「不提供取消收藏」）
-- **封面**：列表用 `images.small`（`object-contain`，容器比例 `aspect-[5/7]`），弹大图用 `images.medium`。**medium 实际尺寸随数据源漂移**（2026-09 实测：v0=r/800、p1 热度榜=r/200、calendar 经典 `m/` 路径≈100px）——列表行由 `mergeSubjectDetail` 统一回填 v0 `images`，保证新番/找番/热度榜行的弹窗大图清晰；`index.html` 对封面 CDN `lain.bgm.tv` 做 preconnect（API 走 Rust 侧不经 webview，无需预连接），`FadeImg` 默认 `loading="lazy" decoding="async"`（WebView2 会因批量 lazy 封面打 `[Intervention]` INFO 日志，属正常机制回执勿当报错）
+- **封面**：所有封面/角色图取图统一走 `lib/cover.ts` 的 `coverUrl(images, 200|400|800)`——lain.bgm.tv 的 `/r/<宽>/` 是官方缩放前缀（v0 各字段即 `r/100|200|400|800` 包裹同一原始 `l/` 路径，2026-10 实测 v0 详情/用户收藏/搜索同构、`common`=r/400；p1 同形但同名键小一档），函数把任意 lain 原始路径（r/ 包裹形或经典 `l/` 形，含 `pic/crt/` 角色图与 `r/WxH` 方形裁切）改写到精确档位并归一 https；经典 `s/m/c/g` 是独立文件不可改写（此类源改写自 `large` 的 `l/` 路径），非 lain 源按档位回退就近字段。档位：列表行缩略(64px)→200、网格卡/详情弹窗缩略/p1 海报卡→400、行点击放大→800（详情弹窗内放大仍 `large` 原图）；r/400 与 v0 `common` 同 URL 跨页共享 WebView2 缓存。`mergeSubjectDetail` 的 images 回填保留（v0 权威源），但 merge 前的行/卡/放大已直接清晰，`calendarToSlimSubject` 的字段级 images 重映射已移除。`index.html` 对封面 CDN `lain.bgm.tv` 做 preconnect（API 走 Rust 侧不经 webview，无需预连接），`FadeImg` 默认 `loading="lazy" decoding="async"`（WebView2 会因批量 lazy 封面打 `[Intervention]` INFO 日志，属正常机制回执勿当报错）
 
 ## 版本更新与发布（两件事）
 

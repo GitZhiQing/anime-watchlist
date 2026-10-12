@@ -5,6 +5,7 @@ import {
   useSubjectRelations,
   useSubjectRecs,
 } from "@/lib/queries";
+import { coverUrl } from "@/lib/cover";
 import { SubjectDetailDialog } from "@/components/SubjectDetailDialog";
 import { FadeImg } from "@/components/FadeImg";
 import {
@@ -164,7 +165,7 @@ function CharactersSection({ data }: { data: P1Character[] }) {
     <div className="scrollbar-thin flex gap-2 overflow-x-auto pb-1">
       {list.map((ch) => {
         const cv = ch.cast?.[0];
-        const img = ch.images?.medium || ch.images?.large || ch.images?.small;
+        const img = coverUrl(ch.images, 200);
         return (
           <div
             key={ch.id}
@@ -238,13 +239,8 @@ function P1SubjectCard({
   badge?: string;
 }) {
   const title = r.nameCN || r.name || "";
-  // medium 起步：grid/small 是小缩略图，放大到卡片尺寸会糊
-  const img =
-    r.images?.medium ||
-    r.images?.large ||
-    r.images?.common ||
-    r.images?.small ||
-    r.images?.grid;
+  // p1 的 medium 仅 200 档，卡片 ≥96px 宽在高 DPI 下偏糊，统一取 400 档
+  const img = coverUrl(r.images, 400);
   return (
     <button
       type="button"

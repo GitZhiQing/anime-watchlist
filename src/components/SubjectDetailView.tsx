@@ -30,6 +30,7 @@ import {
   useSubjectDetail,
   useUserCollectionSmart,
 } from "@/lib/queries";
+import { coverUrl } from "@/lib/cover";
 import {
   SUBJECT_BADGE_STYLES,
   SUBJECT_LABELS,
@@ -76,7 +77,7 @@ export function NSFWBadge({ className }: { className?: string }) {
   );
 }
 
-/** 可点击放大的封面（medium 展示、large 放大） */
+/** 可点击放大的封面（400 档展示、large 原图放大） */
 function ZoomableCover({
   subject,
   widthClass = "w-24",
@@ -85,8 +86,8 @@ function ZoomableCover({
   widthClass?: string;
 }) {
   const title = subject.name_cn || subject.name;
-  const src =
-    subject.images?.medium || subject.images?.large || subject.images?.common;
+  // 96px 容器取 400 档：与网格卡同 URL 共享缓存，高 DPI 下清晰
+  const src = coverUrl(subject.images, 400);
   const zoom = subject.images?.large || subject.images?.medium;
   if (!src) return null;
   return (
