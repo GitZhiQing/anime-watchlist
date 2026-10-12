@@ -173,7 +173,15 @@ token 响应：
 
 `filter.type`：选了具体类型时为 `[subjectType]` 单类型精确搜索；未选时为全部 5 类型 `[2,1,3,4,6]`（动画优先）。**注意 `SubjectType` 枚举无 5**：1=Book、2=Anime、3=Music、4=Game、6=Real。
 
-**高级筛选（2026-10 接入，服务端支持度待实测）**：`filter` 另支持 `air_date`（区间串，如 `">=2020-01-01,<=2021-12-31"`，单边亦可）、`rating`（如 `">=8"`）、`nsfw`（布尔，仅勾选「包含 R18」时传 `true`）。字段语法以官方 v0 spec（见文末参考链接 `api.yml`）为准；实测后在此补记各字段实际生效情况。
+**高级筛选（2026-10-12 实测确认）**：`filter` 另支持 `air_date` 与 `rating`——**两者均为字符串数组**（传字符串直接 400：`Unmarshal type error: expected=[]string`）：
+
+```json
+{ "filter": { "type": [2], "air_date": [">=2015-01-01", "<=2020-12-31"], "rating": [">=8"] } }
+```
+
+- `air_date`：单边或双边条件（区间 = 两个元素），实测生效（「物语」动画 320 → >=2015 为 94 → 区间 2015-2020 为 42，结果年份全部落在区间内）
+- `rating`：如 `[">=8"]`，实测生效（320 → 17 → `>=8.5` 为 5，结果评分全部达标）
+- **`nsfw` 被服务端忽略**：true/false/缺省三态 total 完全一致（「少女」540/540/540、「素人」「魔女」同样），应用不提供 R18 开关
 
 #### GET /v0/subjects/{subject_id} 条目完整详情
 
@@ -353,9 +361,24 @@ Web 端「近期注目」榜（`bangumi.tv/anime/browser/?sort=trends`）的数�
 - 归一化映射：`character`/`subject` 内层 → 扁平条目；`casts[].person` → `cast[]`；`relation.cn||en` → `relation` 字符串；`subject.rating.score` → `score`
 - **characters 未传 limit/offset，响应即服务端给到的全量**（`total` 保留供截断校验，2026-10 接入「查看全部」后待实测大阵容条目是否截断）；条目 `type` 数值语义（1=主角/2=配角/3=客串）为推测映射，待实测确认
 
-### GET /p1/characters/{id}・/p1/persons/{id} 角色/声优详情（在用，形状待实测）
+### GET /p1/characters/{id}・/p1/persons/{id} 角色/声优详情（在用，2026-10-12 实测）
 
-角色/声优弹窗（`src/components/PersonDetailDialog.tsx`）的数据源，公开接口无需鉴权。**响应形状未实测**（仅上游 p1.yaml 登记）：`p1.ts` 的 `normalizePerson` 宽松归一化——`name`/`nameCN`(或 `nicename`)/`images`/`summary`/`career[]` 能取多少取多少，缺失字段静默为 undefined，弹窗 UI 降级（暂无简介/占位头图）。实测后在此补记形状。
+角色/声优弹窗（`src/components/PersonDetailDialog.tsx`）的数据源，公开接口无需鉴权。两端点同构，**2026-10-12 实测形状**：
+
+```jsonc
+{
+  "id": 24865, "name": "井上ほの花", "nameCN": "井上穗乃花",
+  "role": 1,                    // 仅 character：角色类型（对应列表端点的 type）
+  "type": 1,                    // 仅 person
+  "infobox": [ { "key": "…", "values": [ { "v": "…" } ] } ],
+  "info": "…", "summary": "…",
+  "career": ["artist", "seiyu"], // 仅 person：英文职业词（应用侧映射中文显示）
+  "comment": 0, "collects": 0, "lock": false, "redirect": 0, "nsfw": false,
+  "images": { "large": "…", "medium": "…", "small": "…", "grid": "…" }
+}
+```
+
+`p1.ts` 的 `normalizePerson` 取 `name`/`nameCN`/`images`/`summary`/`career[]`（career 前端映射 `CAREER_ZH` 中文）；`infobox`/`info`/`collects` 等未使用。
 
 ### 其余 p1 接口（参考，未使用）
 

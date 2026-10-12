@@ -226,16 +226,14 @@ export async function bgmRequest<T>(
 
 // ===== 高层 API 封装 =====
 
-/** 搜索高级筛选（v0 search filter 子集）。字段语法以官方 v0 spec 为准、
- *  服务端支持度待实测（项目 API.md 原未覆盖），见 docs/API.md 搜索章节。 */
+/** 搜索高级筛选（v0 search filter 子集，2026-10-12 实测）：
+ *  air_date/rating 均为字符串数组（传字符串直接 400）；nsfw 被服务端忽略，不提供。 */
 export interface SearchSubjectFilter {
-  /** 年份区间（含端点），转 air_date ">=YYYY-01-01,<=YYYY-12-31" */
+  /** 年份区间（含端点），转 air_date 数组 [">=YYYY-01-01", "<=YYYY-12-31"] */
   yearFrom?: number;
   yearTo?: number;
-  /** 最低评分，转 rating ">=N" */
+  /** 最低评分，转 rating 数组 [">=N"] */
   minRating?: number;
-  /** 包含 R18（false = 显式排除；默认排除，避免依赖服务端缺省行为） */
-  nsfw?: boolean;
 }
 
 export function searchSubjects(
@@ -249,10 +247,12 @@ export function searchSubjects(
     // subjectType 省略（全部）→ 5 种类型；否则单类型精确搜索
     type: subjectType ? [subjectType] : SUBJECT_TYPES,
   };
-  if (adv?.yearFrom) filter.air_date = `>=${adv.yearFrom}-01-01`;
-  if (adv?.yearTo) filter.air_date = `${filter.air_date ?? ""},<=${adv.yearTo}-12-31`;
-  if (adv?.minRating) filter.rating = `>=${adv.minRating}`;
-  if (adv?.nsfw) filter.nsfw = true;
+  // 2026-10-12 实测：air_date / rating 必须是字符串数组（">=2015-01-01" 等），区间为两个元素
+  const airDate: string[] = [];
+  if (adv?.yearFrom) airDate.push(`>=${adv.yearFrom}-01-01`);
+  if (adv?.yearTo) airDate.push(`<=${adv.yearTo}-12-31`);
+  if (airDate.length > 0) filter.air_date = airDate;
+  if (adv?.minRating) filter.rating = [`>=${adv.minRating}`];
   return bgmRequest<SearchResponse>("/v0/search/subjects", {
     method: "POST",
     query: { limit, offset },

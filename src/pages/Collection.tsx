@@ -3,7 +3,6 @@ import type { ReactNode } from "react";
 import { ArrowDownWideNarrow, Check, ChevronDown, Filter, Flame, Loader2, RefreshCw, SlidersHorizontal, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -181,7 +180,6 @@ export function Collection({ visited = true, onNavigate }: CollectionProps) {
     advFilter?.yearFrom,
     advFilter?.yearTo,
     advFilter?.minRating,
-    advFilter?.nsfw,
   ].filter((v) => v !== undefined).length;
 
   /** 应用年份区间（失焦/回车触发；非法输入按未填处理） */
@@ -203,12 +201,7 @@ export function Collection({ visited = true, onNavigate }: CollectionProps) {
   /** 无任何生效字段的筛选对象归一为 undefined（保持 query key 干净） */
   function normalizeAdv(f: SearchSubjectFilter | undefined): SearchSubjectFilter | undefined {
     if (!f) return f;
-    if (
-      f.yearFrom === undefined &&
-      f.yearTo === undefined &&
-      f.minRating === undefined &&
-      !f.nsfw
-    )
+    if (f.yearFrom === undefined && f.yearTo === undefined && f.minRating === undefined)
       return undefined;
     return f;
   }
@@ -441,17 +434,6 @@ export function Collection({ visited = true, onNavigate }: CollectionProps) {
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Checkbox
-                checked={advFilter?.nsfw ?? false}
-                onCheckedChange={(v) =>
-                  setAdvFilter((prev) =>
-                    normalizeAdv({ ...prev, nsfw: v === true ? true : undefined }),
-                  )
-                }
-              />
-              包含 R18
-            </label>
             {activeFilterCount > 0 && (
               <Button
                 variant="ghost"
