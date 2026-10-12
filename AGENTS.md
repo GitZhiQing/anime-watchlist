@@ -41,7 +41,7 @@ src/
     auth.ts             # OAuth 流程编排
     proxy.ts            # HTTP 代理配置（store→插件 ClientOptions.proxy 转换 + 连通性测试）
     store.ts            # Store 插件封装（凭据/token/代理/偏好）
-    backup.ts           # 数据备份（全部 5 类收藏 → 带时间戳 JSON 文件；目录选择走 dialog 插件、写文件走自定义命令 write_text_file）
+    backup.ts           # 数据备份与恢复（全部 5 类收藏 → 带时间戳 JSON 文件；恢复为聚合导入：校验/计划/并发执行；目录与文件选择走 dialog 插件、读写文件走自定义命令 write_text_file/read_text_file）
     queries.ts          # TanStack Query hooks（缓存+乐观更新+精准失效+hover预取）
     p1.ts               # p1 私有扩展信息（角色/关联/推荐，宽松解析静默失败）
     trending.ts         # 热度榜（p1）+ 日历兜底映射
@@ -51,7 +51,7 @@ src/
   pages/               # Watchlist / Calendar / Collection / Config / About 五个页面
   types/bgm.ts          # Bangumi 数据类型（SlimSubject/Subject/UserCollection/枚举/p1）
 src-tauri/
-  src/lib.rs            # 插件注册 + OAuth 本地回环服务器（tiny_http，动态端口 7359–7369）
+  src/lib.rs            # 插件注册 + OAuth 本地回环服务器（tiny_http，动态端口 7359–7369）+ 自定义命令 write/read_text_file（备份文件读写）
   src/main.rs
   capabilities/default.json  # 权限（窗口/store/http/opener/dialog）
   tauri.conf.json       # 无边框窗口、Vite dev URL

@@ -52,6 +52,8 @@ Tauri 通过 `data-tauri-drag-region` 属性提供原生窗口拖拽——放在
   "core:window:allow-start-dragging",
   "core:window:allow-minimize",
   "core:window:allow-toggle-maximize",
+  "core:window:allow-unmaximize",
+  "core:window:allow-is-maximized",
   "core:window:allow-close"
 ]
 ```
