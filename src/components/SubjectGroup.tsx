@@ -43,9 +43,10 @@ export function SubjectGroup({
       >
         <span>
           {title}
-          <span className="ml-2 text-muted-foreground">({count})</span>
+          <span className="ml-2 text-muted-foreground tabular-nums">({count})</span>
         </span>
         <ChevronDown
+          aria-hidden="true"
           className={cn("size-4 transition-transform", open && "rotate-180")}
         />
       </CollapsibleTrigger>

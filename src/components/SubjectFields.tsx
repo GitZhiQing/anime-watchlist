@@ -168,8 +168,9 @@ export function SubjectFields({
       <Field label="放送开始" value={subject.date} />
       <Field label="平台" value={subject.platform} />
       <Field label="收藏" value={<CollectionValue subject={subject} />} />
-      {prominent.map((b) => (
-        <Field key={b.key} label={b.key} value={infoboxValue(b)} />
+      {prominent.map((b, i) => (
+        // key 带下标：infobox 同名键可重复（如多条「别名」），与 InfoboxMore 口径一致
+        <Field key={`${b.key}-${i}`} label={b.key} value={infoboxValue(b)} />
       ))}
       {rest.length > 0 && <InfoboxMore items={rest} />}
     </div>

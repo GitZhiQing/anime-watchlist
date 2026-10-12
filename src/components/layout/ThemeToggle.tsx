@@ -54,13 +54,14 @@ export function ThemeToggle({ className }: { className?: string }) {
       variant="ghost"
       onClick={cycle}
       title={`主题：${MODE_LABELS[mode]}（点击切换）`}
+      aria-label={`主题：${MODE_LABELS[mode]}，点击切换`}
       className={cn(
         "size-12 shrink-0 p-0",
         "text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
         className,
       )}
     >
-      <Icon className="size-5" />
+      <Icon className="size-5" aria-hidden="true" />
     </Button>
   );
 }

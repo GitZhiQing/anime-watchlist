@@ -35,32 +35,35 @@ export function TitleBar() {
           variant="ghost"
           size="icon"
           className="size-7"
-          onClick={() => appWindow.minimize()}
+          onClick={() => void appWindow.minimize()}
           title="最小化"
+          aria-label="最小化"
         >
-          <Minus className="size-4" />
+          <Minus className="size-4" aria-hidden="true" />
         </Button>
         <Button
           variant="ghost"
           size="icon"
           className="size-7"
-          onClick={() => appWindow.toggleMaximize()}
+          onClick={() => void appWindow.toggleMaximize()}
           title="最大化/还原"
+          aria-label={maximized ? "还原窗口" : "最大化窗口"}
         >
           {maximized ? (
-            <Copy className="size-3" />
+            <Copy className="size-3" aria-hidden="true" />
           ) : (
-            <Square className="size-3" />
+            <Square className="size-3" aria-hidden="true" />
           )}
         </Button>
         <Button
           variant="ghost"
           size="icon"
           className="size-7 hover:bg-destructive hover:text-destructive-foreground"
-          onClick={() => appWindow.close()}
+          onClick={() => void appWindow.close()}
           title="关闭"
+          aria-label="关闭"
         >
-          <X className="size-4" />
+          <X className="size-4" aria-hidden="true" />
         </Button>
       </div>
     </div>

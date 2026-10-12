@@ -2,7 +2,6 @@ import {
   ArrowDownWideNarrow,
   ArrowUpNarrowWide,
   ArrowUpToLine,
-  Check,
   ChevronDown,
   Filter,
   ListCollapse,
@@ -12,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
@@ -72,38 +72,33 @@ export function WatchlistToolbar({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="sm" className="gap-1">
-            <Filter className="size-3.5" />
+            <Filter className="size-3.5" aria-hidden="true" />
             {subjectType ? SUBJECT_LABELS[subjectType] : "全部"}
-            <ChevronDown className="size-3.5" />
+            <ChevronDown className="size-3.5" aria-hidden="true" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => onSubjectTypeChange(undefined)}>
-            <Check
-              className={cn(
-                "size-3.5",
-                subjectType === undefined ? "opacity-100" : "opacity-0",
-              )}
-            />
+          <DropdownMenuCheckboxItem
+            checked={subjectType === undefined}
+            onSelect={() => onSubjectTypeChange(undefined)}
+          >
             全部
-            <span className="ml-auto text-muted-foreground">
+            <span className="ml-auto text-muted-foreground tabular-nums">
               {SUBJECT_TYPES.reduce((a, t) => a + (subjectCounts[t] ?? 0), 0)}
             </span>
-          </DropdownMenuItem>
+          </DropdownMenuCheckboxItem>
           <DropdownMenuSeparator />
           {SUBJECT_TYPES.map((t) => (
-            <DropdownMenuItem key={t} onClick={() => onSubjectTypeChange(t)}>
-              <Check
-                className={cn(
-                  "size-3.5",
-                  subjectType === t ? "opacity-100" : "opacity-0",
-                )}
-              />
+            <DropdownMenuCheckboxItem
+              key={t}
+              checked={subjectType === t}
+              onSelect={() => onSubjectTypeChange(t)}
+            >
               {SUBJECT_LABELS[t]}
-              <span className="ml-auto text-muted-foreground">
+              <span className="ml-auto text-muted-foreground tabular-nums">
                 {subjectCounts[t] ?? 0}
               </span>
-            </DropdownMenuItem>
+            </DropdownMenuCheckboxItem>
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
@@ -116,31 +111,30 @@ export function WatchlistToolbar({
           className="w-8 p-0"
           onClick={onToggleSortDir}
           title={sortDir === "desc" ? "降序（大→小）" : "升序（小→大）"}
+          aria-label={sortDir === "desc" ? "切换为升序" : "切换为降序"}
         >
           {sortDir === "desc" ? (
-            <ArrowDownWideNarrow className="size-3.5" />
+            <ArrowDownWideNarrow className="size-3.5" aria-hidden="true" />
           ) : (
-            <ArrowUpNarrowWide className="size-3.5" />
+            <ArrowUpNarrowWide className="size-3.5" aria-hidden="true" />
           )}
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="gap-1">
               {WATCH_SORT_LABELS[sortKey]}
-              <ChevronDown className="size-3.5" />
+              <ChevronDown className="size-3.5" aria-hidden="true" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {(Object.keys(WATCH_SORT_LABELS) as WatchSortKey[]).map((k) => (
-              <DropdownMenuItem key={k} onClick={() => onSortChange(k)}>
-                <Check
-                  className={cn(
-                    "size-3.5",
-                    sortKey === k ? "opacity-100" : "opacity-0",
-                  )}
-                />
+              <DropdownMenuCheckboxItem
+                key={k}
+                checked={sortKey === k}
+                onSelect={() => onSortChange(k)}
+              >
                 {WATCH_SORT_LABELS[k]}
-              </DropdownMenuItem>
+              </DropdownMenuCheckboxItem>
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
@@ -182,8 +176,9 @@ export function WatchlistToolbar({
         onClick={onRefresh}
         disabled={loading}
         title="刷新"
+        aria-label="刷新收藏列表"
       >
-        <RefreshCw className={cn("size-4", loading && "animate-spin")} />
+        <RefreshCw className={cn("size-4", loading && "animate-spin")} aria-hidden="true" />
       </Button>
     </div>
   );
