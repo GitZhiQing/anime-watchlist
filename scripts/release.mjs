@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "fs";
+import { readFileSync, writeFileSync, existsSync } from "fs";
 import { execSync } from "child_process";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
@@ -100,6 +100,29 @@ function commitVersion(tag) {
   run(`git commit -m "chore: bump version to ${tag}"`);
 }
 
+/**
+ * 发版前置检查：release notes 一律发版前手写并入库（CI 不再自动生成）。
+ * 缺文件 / 未提交都在本地拦截，避免 CI 构建数分钟后才在发布步骤失败。
+ */
+function assertReleaseNotes(tag) {
+  const rel = `docs/release-notes/${tag}.md`;
+  const p = resolve(ROOT, rel);
+  if (!existsSync(p)) {
+    console.error(`\n❌ 缺少 release notes 文件：${rel}`);
+    console.error(`   发版前须先按 commit 历史撰写精简版 notes 并提交入库：`);
+    console.error(`   开头一句定位 + ✨新功能 / 🛠修复与改进 分节（用户视角，只列可感知变化）`);
+    console.error(`   + 📥使用方式 + 完整变更 compare 链接；格式参考 docs/release-notes/v2.0.0.md`);
+    process.exit(1);
+  }
+  // 文件存在但未提交：tag 会打在不含 notes 的提交上，CI checkout 后将找不到文件
+  try {
+    execSync(`git ls-files --error-unmatch "${rel}"`, { cwd: ROOT, stdio: "pipe" });
+  } catch {
+    console.error(`\n❌ ${rel} 尚未提交入库——请先 git add + commit 该文件再运行发版。`);
+    process.exit(1);
+  }
+}
+
 // ── main ─────────────────────────────────────────────────────────────
 
 // 两种模式（「更新版本」和「发布版本」是两件事）：
@@ -138,6 +161,7 @@ if (updateOnly) {
 // 版本已一致 → 只打 tag 并推送（首次发布 / 已 bump 后的发布）
 if (next === current) {
   console.log(`\n🏷  Tagging current version ${tag} (no bump needed) …`);
+  assertReleaseNotes(tag);
   run(`git tag ${tag}`);
   console.log(`\n⬆️  Pushing tag …`);
   run("git push --tags");
@@ -145,6 +169,9 @@ if (next === current) {
   console.log(`   GitHub Actions will build and publish the release shortly.\n`);
   process.exit(0);
 }
+
+// 发版前置：notes 检查放在任何写操作之前，失败时零副作用
+assertReleaseNotes(tag);
 
 console.log(`\n🚀 Releasing v${current} → v${next}\n`);
 updateVersionFiles(next);

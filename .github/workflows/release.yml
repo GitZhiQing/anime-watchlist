@@ -51,27 +51,11 @@ jobs:
           $zip = "anime-watchlist_$tag.zip"
           $repo = "${{ github.repository }}"
 
-          # collect commits since previous tag
-          $prevTag = (git tag --sort=-creatordate | Select-Object -Skip 1 -First 1)
-          if ($prevTag) {
-            $commits = git log "$prevTag..$tag" --pretty="format:- %s (%h)" --no-merges
-          } else {
-            $commits = git log --pretty="format:- %s (%h)" --no-merges
+          # Release notes 一律使用发版前写好的 docs/release-notes/v<tag>.md（随代码入库），
+          # 不再自动生成——本地 release.mjs 已在打 tag 前强制检查，此处兜底拦截
+          $notesFile = "docs/release-notes/$tag.md"
+          if (-not (Test-Path $notesFile)) {
+            throw "缺少 release notes 文件：$notesFile（发版前须先按 commit 历史撰写并入库）"
           }
-          $commitList = if ($commits) { ($commits -join "`n") } else { "- 首次发布" }
 
-          $notes = @"
-          ## 📦 追番计划 $tag
-
-          基于 Bangumi API 的 Windows 桌面追番软件。
-
-          ### 变更
-
-          $commitList
-
-          ### 使用方式
-
-          下载 zip 解压到任意目录，双击 anime-watchlist.exe 运行（绿色便携，无需安装）。
-          "@
-
-          gh release create $tag $zip --repo $repo --title "$tag" --notes "$notes"
+          gh release create $tag $zip --repo $repo --title "$tag" --notes-file $notesFile
