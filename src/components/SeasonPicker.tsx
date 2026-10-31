@@ -6,6 +6,7 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { SeasonKey, SeasonSelection } from "@/types/bgm";
@@ -74,6 +75,7 @@ export function SeasonPicker({ value, onChange }: SeasonPickerProps) {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start">
+          <DropdownMenuLabel>年份</DropdownMenuLabel>
           {years.map((y) => (
             <DropdownMenuCheckboxItem
               key={y}
@@ -82,6 +84,7 @@ export function SeasonPicker({ value, onChange }: SeasonPickerProps) {
               // 本季模式下选年 = 该年 + 当前季度（如 2026-09 点 2025 → 2025年7月）
               onSelect={() => onChange({ year: y, season: value?.season ?? current.season })}
             >
+              <CalendarDays />
               {y} 年
             </DropdownMenuCheckboxItem>
           ))}

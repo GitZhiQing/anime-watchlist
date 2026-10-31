@@ -1,32 +1,50 @@
 import {
+  ArrowDownAZ,
   ArrowDownWideNarrow,
   ArrowUpNarrowWide,
   ArrowUpToLine,
   ChevronDown,
+  Clock,
   Filter,
+  LayoutGrid,
   ListCollapse,
+  ListFilter,
   RefreshCw,
+  Star,
+  Users,
+  type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ButtonGroup } from "@/components/ui/button-group";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  COLLECTION_ICONS,
   COLLECTION_LABELS,
   COLLECTION_ORDER,
   CollectionType,
   SUBJECT_LABELS,
+  SUBJECT_TYPE_ICONS,
   SUBJECT_TYPES,
   SubjectType,
 } from "@/types/bgm";
 import { WATCH_SORT_LABELS, type WatchSortDir, type WatchSortKey } from "@/App";
 import { cn } from "@/lib/utils";
+
+/** 排序键图标（与排序菜单项一一对应） */
+const WATCH_SORT_ICONS: Record<WatchSortKey, LucideIcon> = {
+  default: ListFilter,
+  collect: Users,
+  score: Star,
+  name: ArrowDownAZ,
+  updated: Clock,
+};
 
 interface WatchlistToolbarProps {
   loading: boolean;
@@ -78,67 +96,82 @@ export function WatchlistToolbar({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          <DropdownMenuLabel>条目类型</DropdownMenuLabel>
           <DropdownMenuCheckboxItem
             checked={subjectType === undefined}
             onSelect={() => onSubjectTypeChange(undefined)}
           >
+            <LayoutGrid />
             全部
-            <span className="ml-auto text-muted-foreground tabular-nums">
+            <span className="text-xs text-muted-foreground tabular-nums">
               {SUBJECT_TYPES.reduce((a, t) => a + (subjectCounts[t] ?? 0), 0)}
             </span>
           </DropdownMenuCheckboxItem>
           <DropdownMenuSeparator />
-          {SUBJECT_TYPES.map((t) => (
-            <DropdownMenuCheckboxItem
-              key={t}
-              checked={subjectType === t}
-              onSelect={() => onSubjectTypeChange(t)}
-            >
-              {SUBJECT_LABELS[t]}
-              <span className="ml-auto text-muted-foreground tabular-nums">
-                {subjectCounts[t] ?? 0}
-              </span>
-            </DropdownMenuCheckboxItem>
-          ))}
+          {SUBJECT_TYPES.map((t) => {
+            const Icon = SUBJECT_TYPE_ICONS[t];
+            return (
+              <DropdownMenuCheckboxItem
+                key={t}
+                checked={subjectType === t}
+                onSelect={() => onSubjectTypeChange(t)}
+              >
+                <Icon />
+                {SUBJECT_LABELS[t]}
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {subjectCounts[t] ?? 0}
+                </span>
+              </DropdownMenuCheckboxItem>
+            );
+          })}
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {/* 排序：左半 toggle 升/降序，右半选排序键 */}
-      <ButtonGroup>
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-8 p-0"
-          onClick={onToggleSortDir}
-          title={sortDir === "desc" ? "降序（大→小）" : "升序（小→大）"}
-          aria-label={sortDir === "desc" ? "切换为升序" : "切换为降序"}
-        >
-          {sortDir === "desc" ? (
-            <ArrowDownWideNarrow className="size-3.5" aria-hidden="true" />
-          ) : (
-            <ArrowUpNarrowWide className="size-3.5" aria-hidden="true" />
-          )}
-        </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="gap-1">
-              {WATCH_SORT_LABELS[sortKey]}
-              <ChevronDown className="size-3.5" aria-hidden="true" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {(Object.keys(WATCH_SORT_LABELS) as WatchSortKey[]).map((k) => (
+      {/* 排序：排序键 + 方向同在一个下拉（方向为第二组，选中项打勾） */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="sm" className="gap-1" title="排序方式与方向">
+            {WATCH_SORT_LABELS[sortKey]}
+            <ChevronDown className="size-3.5" aria-hidden="true" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuLabel>排序方式</DropdownMenuLabel>
+          {(Object.keys(WATCH_SORT_LABELS) as WatchSortKey[]).map((k) => {
+            const Icon = WATCH_SORT_ICONS[k];
+            return (
               <DropdownMenuCheckboxItem
                 key={k}
                 checked={sortKey === k}
                 onSelect={() => onSortChange(k)}
               >
+                <Icon />
                 {WATCH_SORT_LABELS[k]}
               </DropdownMenuCheckboxItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </ButtonGroup>
+            );
+          })}
+          <DropdownMenuSeparator />
+          <DropdownMenuLabel>排序方向</DropdownMenuLabel>
+          <DropdownMenuCheckboxItem
+            checked={sortDir === "asc"}
+            onSelect={() => {
+              if (sortDir !== "asc") onToggleSortDir();
+            }}
+          >
+            <ArrowUpNarrowWide />
+            升序
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
+            checked={sortDir === "desc"}
+            onSelect={() => {
+              if (sortDir !== "desc") onToggleSortDir();
+            }}
+          >
+            <ArrowDownWideNarrow />
+            降序
+          </DropdownMenuCheckboxItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -155,18 +188,23 @@ export function WatchlistToolbar({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem onClick={onJumpToTop}>
-            <ArrowUpToLine className="size-3.5" />
+            <ArrowUpToLine />
             回到顶部
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          {COLLECTION_ORDER.map((type) => (
-            <DropdownMenuItem key={type} onClick={() => onJumpTo(type)}>
-              {COLLECTION_LABELS[type]}
-              <span className="ml-auto text-muted-foreground">
-                {counts[type] ?? 0}
-              </span>
-            </DropdownMenuItem>
-          ))}
+          <DropdownMenuLabel>跳转到分组</DropdownMenuLabel>
+          {COLLECTION_ORDER.map((type) => {
+            const Icon = COLLECTION_ICONS[type];
+            return (
+              <DropdownMenuItem key={type} onClick={() => onJumpTo(type)}>
+                <Icon />
+                {COLLECTION_LABELS[type]}
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {counts[type] ?? 0}
+                </span>
+              </DropdownMenuItem>
+            );
+          })}
         </DropdownMenuContent>
       </DropdownMenu>
 

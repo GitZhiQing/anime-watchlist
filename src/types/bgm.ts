@@ -1,6 +1,20 @@
 // Bangumi 数据类型，依据官方 v0 OpenAPI 规范（https://github.com/bangumi/api/blob/master/open-api/v0.yaml）
 // 与 TMP.json 样例定义。接口说明见 docs/API.md。
 
+import {
+  BookOpen,
+  CircleCheck,
+  CircleX,
+  Clapperboard,
+  Gamepad2,
+  Heart,
+  Music,
+  Pause,
+  Play,
+  Video,
+  type LucideIcon,
+} from "lucide-react";
+
 /** 条目类型 SubjectType。5 类全量使用（收藏列表/备份/统计/筛选），5 不存在 */
 export enum SubjectType {
   Book = 1,
@@ -39,6 +53,15 @@ export const SUBJECT_BADGE_STYLES: Record<SubjectType, string> = {
   [SubjectType.Real]: "bg-pink-500 text-white",
 };
 
+/** 条目类型下拉菜单图标（追番/找番类型筛选共用） */
+export const SUBJECT_TYPE_ICONS: Record<SubjectType, LucideIcon> = {
+  [SubjectType.Book]: BookOpen,
+  [SubjectType.Anime]: Clapperboard,
+  [SubjectType.Music]: Music,
+  [SubjectType.Game]: Gamepad2,
+  [SubjectType.Real]: Video,
+};
+
 /** 收藏夹类型 SubjectCollectionType */
 export enum CollectionType {
   Wish = 1, // 想看
@@ -64,6 +87,15 @@ export const COLLECTION_ORDER: CollectionType[] = [
   CollectionType.OnHold,
   CollectionType.Dropped,
 ];
+
+/** 收藏夹类型下拉菜单图标（收藏/跳转菜单共用） */
+export const COLLECTION_ICONS: Record<CollectionType, LucideIcon> = {
+  [CollectionType.Doing]: Play,
+  [CollectionType.Wish]: Heart,
+  [CollectionType.Done]: CircleCheck,
+  [CollectionType.OnHold]: Pause,
+  [CollectionType.Dropped]: CircleX,
+};
 
 export interface SubjectImages {
   small?: string;

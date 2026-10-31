@@ -1,6 +1,21 @@
 import { useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowDownWideNarrow, ChevronDown, Filter, Flame, Loader2, RefreshCw, SlidersHorizontal, X } from "lucide-react";
+import {
+  ArrowDownAZ,
+  ArrowDownWideNarrow,
+  ChevronDown,
+  Filter,
+  Flame,
+  LayoutGrid,
+  ListFilter,
+  Loader2,
+  RefreshCw,
+  SlidersHorizontal,
+  Star,
+  StarOff,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +24,7 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -18,7 +34,12 @@ import { SearchInput } from "@/components/SearchInput";
 import { SubjectGridCard } from "@/components/SubjectGridCard";
 import { ViewTabs, type ViewMode } from "@/components/ViewTabs";
 import { useSearchSubjects, useTrendingFeed } from "@/lib/queries";
-import { SUBJECT_LABELS, SUBJECT_TYPES, SubjectType } from "@/types/bgm";
+import {
+  SUBJECT_LABELS,
+  SUBJECT_TYPE_ICONS,
+  SUBJECT_TYPES,
+  SubjectType,
+} from "@/types/bgm";
 import { cn } from "@/lib/utils";
 import { useAuthUser } from "@/hooks/useAuthUser";
 import { usePersistentState } from "@/hooks/usePersistentState";
@@ -33,6 +54,12 @@ const RESULT_SORT_LABELS: Record<ResultSortKey, string> = {
   match: "默认",
   score: "评分",
   name: "名称",
+};
+
+const RESULT_SORT_ICONS: Record<ResultSortKey, LucideIcon> = {
+  match: ListFilter,
+  score: Star,
+  name: ArrowDownAZ,
 };
 
 /** 搜索结果/热度榜网格容器（与追番/新番网格同规格） */
@@ -258,15 +285,20 @@ export function Collection({ visited = true, onNavigate }: CollectionProps) {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                {(Object.keys(RESULT_SORT_LABELS) as ResultSortKey[]).map((k) => (
-                  <DropdownMenuCheckboxItem
-                    key={k}
-                    checked={resultSort === k}
-                    onSelect={() => setResultSort(k)}
-                  >
-                    {RESULT_SORT_LABELS[k]}
-                  </DropdownMenuCheckboxItem>
-                ))}
+                <DropdownMenuLabel>排序方式</DropdownMenuLabel>
+                {(Object.keys(RESULT_SORT_LABELS) as ResultSortKey[]).map((k) => {
+                  const Icon = RESULT_SORT_ICONS[k];
+                  return (
+                    <DropdownMenuCheckboxItem
+                      key={k}
+                      checked={resultSort === k}
+                      onSelect={() => setResultSort(k)}
+                    >
+                      <Icon />
+                      {RESULT_SORT_LABELS[k]}
+                    </DropdownMenuCheckboxItem>
+                  );
+                })}
               </DropdownMenuContent>
             </DropdownMenu>
           )}
@@ -323,22 +355,28 @@ export function Collection({ visited = true, onNavigate }: CollectionProps) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuLabel>条目类型</DropdownMenuLabel>
               <DropdownMenuCheckboxItem
                 checked={subjectType === undefined}
                 onSelect={() => setStoredType(0)}
               >
+                <LayoutGrid />
                 全部
               </DropdownMenuCheckboxItem>
               <DropdownMenuSeparator />
-              {SUBJECT_TYPES.map((t) => (
-                <DropdownMenuCheckboxItem
-                  key={t}
-                  checked={subjectType === t}
-                  onSelect={() => setStoredType(t)}
-                >
-                  {SUBJECT_LABELS[t]}
-                </DropdownMenuCheckboxItem>
-              ))}
+              {SUBJECT_TYPES.map((t) => {
+                const Icon = SUBJECT_TYPE_ICONS[t];
+                return (
+                  <DropdownMenuCheckboxItem
+                    key={t}
+                    checked={subjectType === t}
+                    onSelect={() => setStoredType(t)}
+                  >
+                    <Icon />
+                    {SUBJECT_LABELS[t]}
+                  </DropdownMenuCheckboxItem>
+                );
+              })}
             </DropdownMenuContent>
           </DropdownMenu>
           <Button type="submit" size="sm" disabled={isFetching || !keyword.trim()}>
@@ -410,22 +448,27 @@ export function Collection({ visited = true, onNavigate }: CollectionProps) {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
-                {[undefined, 6, 7, 8, 9].map((n) => (
-                  <DropdownMenuCheckboxItem
-                    key={n ?? "all"}
-                    checked={
-                      advFilter?.minRating === n ||
-                      (n === undefined && !advFilter?.minRating)
-                    }
-                    onSelect={() =>
-                      setAdvFilter((prev) =>
-                        normalizeAdv({ ...prev, minRating: n }),
-                      )
-                    }
-                  >
-                    {n ? `${n}+ 分` : "评分不限"}
-                  </DropdownMenuCheckboxItem>
-                ))}
+                <DropdownMenuLabel>最低评分</DropdownMenuLabel>
+                {[undefined, 6, 7, 8, 9].map((n) => {
+                  const Icon = n ? Star : StarOff;
+                  return (
+                    <DropdownMenuCheckboxItem
+                      key={n ?? "all"}
+                      checked={
+                        advFilter?.minRating === n ||
+                        (n === undefined && !advFilter?.minRating)
+                      }
+                      onSelect={() =>
+                        setAdvFilter((prev) =>
+                          normalizeAdv({ ...prev, minRating: n }),
+                        )
+                      }
+                    >
+                      <Icon />
+                      {n ? `${n}+ 分` : "评分不限"}
+                    </DropdownMenuCheckboxItem>
+                  );
+                })}
               </DropdownMenuContent>
             </DropdownMenu>
             {activeFilterCount > 0 && (

@@ -2,14 +2,19 @@ import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowDownAZ,
   ArrowDownWideNarrow,
   ArrowUpNarrowWide,
+  CalendarDays,
   ChevronDown,
+  Flame,
   Loader2,
   LocateFixed,
   Minus,
   Plus,
   RefreshCw,
+  Star,
+  type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
@@ -19,6 +24,8 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { PageLayout } from "@/components/layout/PageLayout";
@@ -82,6 +89,14 @@ interface SeasonSort {
 }
 
 const SEASON_SORT_KEYS: SeasonSortKey[] = ["heat", "date", "score", "name"];
+
+/** 排序键图标（heat 为自适应指标键，图标固定为热度火焰） */
+const SEASON_SORT_ICONS: Record<SeasonSortKey, LucideIcon> = {
+  heat: Flame,
+  date: CalendarDays,
+  score: Star,
+  name: ArrowDownAZ,
+};
 
 /** 排序键标签：heat 为自适应指标键，显示当前季度的关键指标名（在看/想看/看过） */
 function seasonSortLabel(key: SeasonSortKey, metric: SeasonMetric): string {
@@ -472,46 +487,60 @@ export function Calendar({ visited = true }: CalendarProps) {
         <>
           <SeasonPicker value={season} onChange={setSeason} />
 
-          {/* 季度排序：左半 toggle 升/降序，右半选排序键（仅季度模式；首键随季度自适应
-              在看/想看/看过，本季为每周放送组内在看降序不显示控件） */}
+          {/* 季度排序：排序键 + 方向同在一个下拉（方向为第二组，选中项打勾；仅季度模式，
+              首键随季度自适应在看/想看/看过，本季为每周放送组内在看降序不显示控件） */}
           {season && (
-            <ButtonGroup className="ml-auto">
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-8 p-0"
-                onClick={() =>
-                  setSeasonSort((s) => ({ ...s, reversed: !s.reversed }))
-                }
-                title={sortDir === "desc" ? "降序（大→小）" : "升序（小→大）"}
-                aria-label={sortDir === "desc" ? "切换为升序" : "切换为降序"}
-              >
-                {sortDir === "desc" ? (
-                  <ArrowDownWideNarrow className="size-3.5" aria-hidden="true" />
-                ) : (
-                  <ArrowUpNarrowWide className="size-3.5" aria-hidden="true" />
-                )}
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="gap-1">
-                    {seasonSortLabel(seasonSort.key, activeMetric)}
-                    <ChevronDown className="size-3.5" aria-hidden="true" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  {SEASON_SORT_KEYS.map((k) => (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="ml-auto gap-1"
+                  title="排序方式与方向"
+                >
+                  {seasonSortLabel(seasonSort.key, activeMetric)}
+                  <ChevronDown className="size-3.5" aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>排序方式</DropdownMenuLabel>
+                {SEASON_SORT_KEYS.map((k) => {
+                  const Icon = SEASON_SORT_ICONS[k];
+                  return (
                     <DropdownMenuCheckboxItem
                       key={k}
                       checked={seasonSort.key === k}
                       onSelect={() => setSeasonSort((s) => ({ ...s, key: k }))}
                     >
+                      <Icon />
                       {seasonSortLabel(k, activeMetric)}
                     </DropdownMenuCheckboxItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </ButtonGroup>
+                  );
+                })}
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>排序方向</DropdownMenuLabel>
+                <DropdownMenuCheckboxItem
+                  checked={sortDir === "asc"}
+                  onSelect={() => {
+                    if (sortDir !== "asc")
+                      setSeasonSort((s) => ({ ...s, reversed: !s.reversed }));
+                  }}
+                >
+                  <ArrowUpNarrowWide />
+                  升序
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem
+                  checked={sortDir === "desc"}
+                  onSelect={() => {
+                    if (sortDir !== "desc")
+                      setSeasonSort((s) => ({ ...s, reversed: !s.reversed }));
+                  }}
+                >
+                  <ArrowDownWideNarrow />
+                  降序
+                </DropdownMenuCheckboxItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </>
       }

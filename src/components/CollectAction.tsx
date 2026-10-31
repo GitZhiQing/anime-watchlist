@@ -7,6 +7,7 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -16,7 +17,11 @@ import {
   useSetCollection,
   usePatchCollection,
 } from "@/lib/queries";
-import { COLLECTION_LABELS, COLLECTION_ORDER } from "@/types/bgm";
+import {
+  COLLECTION_ICONS,
+  COLLECTION_LABELS,
+  COLLECTION_ORDER,
+} from "@/types/bgm";
 import type { CollectionType, SlimSubject } from "@/types/bgm";
 
 interface CollectActionProps {
@@ -123,15 +128,20 @@ export function CollectAction({ subjectId, subject, size = "sm" }: CollectAction
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {COLLECTION_ORDER.map((t) => (
-          <DropdownMenuCheckboxItem
-            key={t}
-            checked={current === t}
-            onSelect={() => handleSelect(t)}
-          >
-            {COLLECTION_LABELS[t]}
-          </DropdownMenuCheckboxItem>
-        ))}
+        <DropdownMenuLabel>收藏到</DropdownMenuLabel>
+        {COLLECTION_ORDER.map((t) => {
+          const Icon = COLLECTION_ICONS[t];
+          return (
+            <DropdownMenuCheckboxItem
+              key={t}
+              checked={current === t}
+              onSelect={() => handleSelect(t)}
+            >
+              <Icon />
+              {COLLECTION_LABELS[t]}
+            </DropdownMenuCheckboxItem>
+          );
+        })}
         {/* 上游无取消收藏端点：去网页管理（条目页右侧收藏面板）删除收藏 */}
         <DropdownMenuSeparator />
         <DropdownMenuItem
